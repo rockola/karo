@@ -656,12 +656,17 @@
        (write-file ,var ,fname :supersede t)
        ,fname)))
 
-#|
-(progn
-  (setf user::*foo* (make-instance 'midi::midi-file))
-  (push (make-instance 'midi::midi-track) (midi::tracks user::*foo*))
-  (push (make-instance 'midi::cue-point :text "foo bar") (midi::events (first (midi::tracks user::*foo*))))
-  (push (make-instance 'midi::lyric :text "baz bat") (midi::events (first (midi::tracks user::*foo*)))))
 
-(midi::write-file user::*foo* #p"/tmp/foo.mid" :supersede t)
-|#
+;; (setf user::*foo* (make-instance 'midi::midi-file))
+;; (push (make-instance 'midi::midi-track) 
+;;       (midi::tracks user::*foo*))
+;; (push (make-instance 'midi::cue-point :text "foo bar") 
+;;       (midi::events (first (midi::tracks user::*foo*))))
+;; (push (make-instance 'midi::lyric :text "baz bat") 
+;;       (midi::events (first (midi::tracks user::*foo*))))
+;; (midi::write-file user::*foo* #p"/tmp/foo.mid" :supersede t)
+
+
+(pushnew :karo-midi *features*)
+
+;; EOF
