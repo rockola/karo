@@ -38,18 +38,15 @@
 
 ;;;;;;;;;;;;;;;;
 
-(defpackage :midi
-  (:use :common-lisp))
-
 (defpackage :karo
   (:use :common-lisp)
   (:export #:about))
 
 (in-package "KARO")
 
-(defparameter *karo-version* "1.105")
-(defparameter *karo-version-date* '("2013-05-27"
-				    "14:50:00"))
+(defparameter *karo-version* "1.106")
+(defparameter *karo-version-date* '("2013-05-29"
+				    "12:05:00"))
 
 (defvar *notes-in-group* 12)
 (defvar *n-ad-size* 3)
@@ -258,15 +255,16 @@ Example: (with *N-AD-SIZE* 3)
 
 #|
 (defparameter *groups*
-  (mapcar #'(lambda (x)
-              (cons x (groupings (loop for i below x collect i))))
+  (mapcar #'(lambda (x) (cons x (groupings (loop for i below x collect i))))
 	  *group-sizes*))
 |#
 
 (let (all-groupings)
   (defun groups (group-size)
     (unless (assoc group-size all-groupings)
-      (push (cons group-size (groupings (loop for i below group-size collect i)))))
+      (push (cons group-size 
+		  (groupings (loop for i below group-size collect i)))
+	    all-groupings))
     (assoc group-size all-groupings)))
   
 
@@ -440,6 +438,27 @@ If already grouped, do nothing."
 (alias chords as-chords)
 
 
+(defun list-rotate (list &optional (distance 1))
+  (flet ((do-rotate (x)
+	   (let ((m (copy-list x)))
+	     (dotimes (i distance)
+	       (setf m (cons (car (last m)) (butlast m))))
+	     m)))
+    (cond ((or (not (integerp distance))
+	       (= distance 0))
+	   list)
+	  (t
+	   (cond ((listp (car list))
+		  (mapcar #'do-rotate list))
+		 (t
+		  (do-rotate list)))))))
+
+
+(defun all-list-rotations (list)
+  (loop for x below (length list)
+     collect (list-rotate list x)))
+
+
 (defun chord-intervals (chord &optional (reference t))
   (let ((c (funcall (if reference #'reference #'identity) chord)))
     (loop for a in c
@@ -518,10 +537,6 @@ If REFERENCE is not NIL, return name of CHORD as referenced."
     (< (sort-key a) (sort-key b))))
 
 
-(defmethod normalize-chord-structure ((karo karo))
-  (normalize-chord-structure (karo-structure karo)))
-
-
 (defun chord-score (chord)
   ;; input in format ((a b) c)
   (destructuring-bind ((interval-1 interval-2) root)
@@ -583,6 +598,34 @@ If REFERENCE is not NIL, return name of CHORD as referenced."
 (defmethod name-intervals ((karo karo) &optional reference)
   (declare (ignore reference))
   (mapcar #'chord-name (as-chords karo)))
+
+
+(let (karos)
+  (defun all-karos (&optional (notes '(0 1 2 3 4 5 6 7 8 9 10 11)))
+    "Generate array of all karos"
+    (or (cdr (assoc *notes-in-group* karos))
+	(let* ((notes (subseq notes 0 *notes-in-group*))
+	       (all-karos-in-z
+		(loop for i below (max-karo)
+		   with karo-array = (make-array (max-karo))
+		   do (setf (aref karo-array i) 
+			    (make-instance 'karo
+					   :karo-index (1+ i) ;; OFF-BY-ONE!
+					   :notes notes))
+		   finally (return karo-array))))
+	  (setf karos (cons (cons *notes-in-group* all-karos-in-z) karos))
+	  all-karos-in-z))))
+
+
+(defun find-karo (notes)
+  "Get the karo matching NOTES"
+  (let ((notes (apply #'nconc
+		      (sort (mapcar #'(lambda (x) (sort x #'<))
+				    (as-chords notes))
+			    #'< :key #'first))))
+    (find-if #'(lambda (x)
+		 (equal notes (notes x)))
+	     (all-karos))))
 
 
 (defmethod rotate ((karo karo) &optional (rotation 1))
@@ -725,37 +768,9 @@ In the example above, (0 2 7) becomes (1 3 8), (1 3 9) becomes (2 4 10) and so o
   (values))
 
 
-(let (karos)
-  (defun all-karos (&optional (notes '(0 1 2 3 4 5 6 7 8 9 10 11)))
-    "Generate array of all karos"
-    (or (cdr (assoc *notes-in-group* karos))
-	(let* ((notes (subseq notes 0 *notes-in-group*))
-	       (all-karos-in-z
-		(loop for i below (max-karo)
-		   with karo-array = (make-array (max-karo))
-		   do (setf (aref karo-array i) 
-			    (make-instance 'karo
-					   :karo-index (1+ i) ;; OFF-BY-ONE!
-					   :notes notes))
-		   finally (return karo-array))))
-	  (setf karos (cons (cons *notes-in-group* all-karos-in-z) karos))
-	  all-karos-in-z))))
-
-
 (defun get-karo (index)
   "Get the INDEXth karo from KAROS"
   (aref (all-karos) (1- index))) ;; OFF-BY-ONE
-
-
-(defun find-karo (notes)
-  "Get the karo matching NOTES"
-  (let ((notes (apply #'nconc
-		      (sort (mapcar #'(lambda (x) (sort x #'<))
-				    (as-chords notes))
-			    #'< :key #'first))))
-    (find-if #'(lambda (x)
-		 (equal notes (notes x)))
-	     (all-karos))))
 
 
 (defun model-permutations (pairwise-model)
@@ -1103,6 +1118,10 @@ otherwise signal an error."
       (normalize-chord-structure chord-structures))))
 
 
+(defmethod normalize-chord-structure ((karo karo))
+  (normalize-chord-structure (karo-structure karo)))
+
+
 (defun karo-structures (&optional karo-list)
   (default karo-list (all-karos))
   (let ((structure-hash (make-hash-table :test #'equal)))
@@ -1377,27 +1396,6 @@ Mirror images are not considered."
 (defun candidates (list-of-chords)
   (loop for p in (list-permutations-unique list-of-chords)
      append (all-perms p)))
-
-
-(defun list-rotate (list &optional (distance 1))
-  (flet ((do-rotate (x)
-	   (let ((m (copy-list x)))
-	     (dotimes (i distance)
-	       (setf m (cons (car (last m)) (butlast m))))
-	     m)))
-    (cond ((or (not (integerp distance))
-	       (= distance 0))
-	   list)
-	  (t
-	   (cond ((listp (car list))
-		  (mapcar #'do-rotate list))
-		 (t
-		  (do-rotate list)))))))
-
-
-(defun all-list-rotations (list)
-  (loop for x below (length list)
-     collect (list-rotate list x)))
 	 
 
 (defun salto-list (list-of-chords)
@@ -2011,12 +2009,13 @@ showpage
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
+#+:karo-midi
 (defmethod midi-output ((notes list) &key directory duration instrument octave karo-index)
-  (unless (find-package "MIDI")
-    (error "You have to load midi.lisp before you can output MIDI files."))
   (unless (integerp karo-index)
     (setf karo-index 0))
-  (midi::with-midi-output (midi (format nil "~A/karo-~A.mid" (or directory "/tmp") karo-index)
+  (midi::with-midi-output (midi (format nil "~A/karo-~A.mid" 
+					(or directory "/tmp") 
+					karo-index)
 				:title (format nil "Karo ~D" karo-index)
 				:instrument instrument)
     (dolist (note notes)
@@ -2027,6 +2026,8 @@ showpage
 	     (midi::add-note midi note :duration duration
 			     :octave octave :notes-per-octave *notes-in-group*))))))
 
+
+#+:karo-midi
 (defmethod midi-output ((karo karo) &key directory duration instrument octave (arpeggio nil))
   (midi-output (if arpeggio 
 		   (notes karo)
@@ -2149,6 +2150,7 @@ showpage
 
 
 (defun lilypond-output-chords (chord-list &key directory karo-index titles filename)
+  (declare (ignore titles))
   (let ((suffix "ly")
 	(chords (lilypond-chords chord-list)))
     (default directory "/tmp")
@@ -2384,6 +2386,6 @@ f52 0 1024  5  1 1024 .0001                      ; index envelope
 
 (about)
 
-(in-package "CL-USER")
+;; (in-package "CL-USER")
 
 ;; EOF
