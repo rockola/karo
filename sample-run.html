@@ -1,0 +1,165 @@
+<html>
+<head>
+<title>Karo Engine: Sample run</title>
+</head>
+<style type="text/css">
+div.output {
+  font-family: monospace;
+  display: block;
+  margin-left: 1em;
+  margin-bottom: 0.5em;
+  background-color: #cccccc;
+}
+span.prompt {
+  color: #666666;
+}
+span.input {
+  color: #ff0000;
+}
+span.output {
+  color: #000000;
+}
+tt {
+  font-family: monospace;
+}
+</style>
+<body>
+<h1>Karo Engine</h1>
+<h2>Sample run</h2>
+<p>An example of a Karo Engine session, with annotations.</p>
+<div class="output">
+; SLIME 2012-05-25<br>
+CL-USER> (load "karo.lisp")<br>
+<br>
+; file: /home/ola/src/karo/karo.lisp<br>
+...<br>
+Karo Engine v1.106 2013-05-29 12:05:00<br>
+(c) 2001-2013 Daniel Schell and Ola Rinta-Koski<br>
+http://ola.rinta-koski.net/karo/  for more info<br>
+T<br>
+</div>
+<p>
+A Karo Engine session is started by loading <tt>karo.lisp</tt>.
+</p>
+<div class="output">
+CL-USER> (in-package "KARO")<br>
+#&LT;PACKAGE "KARO"&GT;<br>
+</div>
+<p>
+All Karo Engine definitions are in the package <tt>KARO</tt>.
+<div class="output">
+KARO> #[8556]<br>
+#&lt;Karo 8556 (0 4 8 1 5 9 2 6 10 3 7 11) 4,4(0) 4,4(1) 4,4(2) 4,4(3)&gt;<br>
+KARO> (get-karo 8556)<br>
+#&lt;Karo 8556 (0 4 8 1 5 9 2 6 10 3 7 11) 4,4(0) 4,4(1) 4,4(2) 4,4(3)&gt;<br>
+</div>
+<p>
+#[<i>i</i>] is a reader macro which returns the <i>i</i>th Karo (when working in Z<sub>12</sub>, <i>i</i> can range from 1 to 15400). #[<i>i</i>] simply calls the function <tt>GET-KARO</tt>.
+</p>
+<div class="output">
+KARO> (as-chords #[8556])<br>
+((0 4 8) (1 5 9) (2 6 10) (3 7 11))<br>
+</div>
+<p>
+<tt>(AS-CHORDS <i>{karo}</i>)</tt> returns the notes of <tt>karo</tt> grouped as chords.
+</p>
+<div class="output">
+KARO> (name-chords #[8556])<br>
+("4,4(0)" "4,4(1)" "4,4(2)" "4,4(3)")<br>
+</div>
+<p>
+<tt>(NAME-CHORDS <i>{karo}</i>)</tt> returns the chords of <tt>karo</tt> using the naming convention of <i>i,j(k)</i>, where <i>i</i> = 1st interval, <i>j</i> = 2nd interval and <i>k</i> = base note.
+</p>
+<div class="output">
+KARO> (find-karos '(4 4 4 4 4 4 4 4))<br>
+(#&lt;Karo 8556 (0 4 8 1 5 9 2 6 10 3 7 11) 4,4(0) 4,4(1) 4,4(2) 4,4(3)&gt;)<br>
+KARO> (find-karos '(4 3 3 4 4 3 3 4))<br>
+(#&lt;Karo 6326 (0 3 7 1 5 10 2 6 9 4 8 11) 3,4(0) 3,4(10) 4,3(2) 4,3(4)&gt;<br>
+ #&lt;Karo 6356 (0 3 7 1 6 9 2 5 10 4 8 11) 3,4(0) 3,4(6) 4,3(10) 4,3(4)&gt;<br>
+ ...<br>
+ #&lt;Karo 10518 (0 5 9 1 4 8 2 7 10 3 6 11) 4,3(5) 3,4(1) 3,4(7) 4,3(11)&gt;<br>
+ #&lt;Karo 10519 (0 5 9 1 4 8 2 7 11 3 6 10) 4,3(5) 3,4(1) 4,3(7) 3,4(3)&gt;)<br>
+</div>
+<p>
+<tt>(FIND-KAROS <i>{model}</i>)</tt> returns a list of the Karos that match <tt>model</tt>. A match is found when the intervals of the Karo notes written as chords match pairwise with the intervals specified in <tt>model</tt>. Chord order is not important.
+</p>
+<div class="output">
+KARO> (karo-class #[8556])<br>
+:ROTATIONAL<BR>
+KARO> (karo-class #[10519])<br>
+:SYMMETRIC<BR>
+</div>
+<p>
+<tt>(KARO-CLASS <i>{karo}</i>)</tt> returns one of three
+values: <tt>:ROTATIONAL</tt> (all intervals are
+equal), <tt>:SYMMETRIC</tt> (the interval list is symmetric eg. 34 43 43
+34) or <tt>:COMMON</tt> (all other cases), depending on the symmetricity
+of <i>karo</i>.
+</p>
+<div class="output">
+KARO> (connect #[10519])<br>
+(11 ((1 4 8) (0 5 9) (3 6 10) (2 7 11)) ((1 4 8) (0 5 9) (3 6 10) (2 7 11))<br>
+ (3 5 3) ((-1 1 1) (3 1 1) (-1 1 1)))<br>
+KARO> (connect #[10519] :reject-translation nil)<br>
+(11 ((1 4 8) (0 5 9) (3 6 10) (2 7 11)) ((1 4 8) (0 5 9) (3 6 10) (2 7 11))<br>
+ (3 5 3) ((-1 1 1) (3 1 1) (-1 1 1)))<br>
+KARO> (connect #[10519] :fixed-order t)<br>
+(11 ((0 5 9) (1 4 8) (-1 2 7) (-2 3 6)) ((0 5 9) (1 4 8) (11 2 7) (10 3 6))<br>
+ (3 5 3) ((1 -1 -1) (-2 -2 -1) (-1 1 -1)))<br>
+</div>
+<p>
+<tt>(CONNECT <i>{karo}</i> &amp;KEY (REJECT-TRANSLATION T) (FIXED-ORDER
+NIL))</tt> returns the best connection for the chords in <i>karo</i>.</p>
+<p>The return value is a list of the form <tt>(<i>a b c d</i>)</tt>:
+<ul><li><i>a</i> = total of intervals</li>
+<li><i>b</i> = chords of the connection</li>
+<li><i>c</i> = chords of the connection with all notes in the positive range</li>
+<li><i>d</i> = intervals of the connection</p></li>
+</ul>
+</p>
+<div class="output">
+KARO> (draw #[10519])<br>
+<br>
+"/tmp/karo-10519.xml" <br>
+"/tmp/karo-10519.eps" <br>
+"/tmp/karo-10519.svg" <br>
+NIL<BR>
+</div>
+<p>
+<tt>(DRAW <i>{karo}</i> &amp;KEY (DIRECTORY "/tmp"))</tt> outputs various diagrams of <tt>karo</tt> to <tt>directory</tt>.
+</p>
+<div class="output">
+KARO> (midi-output #[10519])<br>
+; Evaluation aborted on #&lt;UNDEFINED-FUNCTION MIDI-OUTPUT {1006B919A3}&gt;.<br>
+KARO> (load "midi.lisp")<br>
+STYLE-WARNING: Implicitly creating new generic function MIDI::WRITE-EVENT.<br>
+...<br>
+T<BR>
+KARO> (midi-output #[10519])<br>
+; Evaluation aborted on #&lt;UNDEFINED-FUNCTION MIDI-OUTPUT {1006D476E3}&gt;.<br>
+KARO> (load "karo.lisp")<br>
+<br>
+; file: /home/ola/src/karo/karo.lisp<br>
+...<br>
+Karo Engine v1.106 2013-05-29 12:05:00<br>
+(c) 2001-2013 Daniel Schell and Ola Rinta-Koski<br>
+http://ola.rinta-koski.net/karo/  for more info<br>
+T<BR>
+KARO> (midi-output #[10519])<br>
+"/tmp/karo-10519.mid"<br>
+</div>
+<p>
+<tt>(MIDI-OUTPUT <i>{karo}</i> &amp;KEY (DIRECTORY "/tmp"))</tt> outputs <tt>karo</tt> as a MIDI file to <tt>directory</tt>. Note that in order to use this feature, <tt>midi.lisp</tt> has to be loaded before <tt>karo.lisp</tt>.
+</p>
+<div class="output">
+KARO> (csound-file "/tmp/karo-10519.csd" #[10519])<br>
+"/tmp/karo-10519.csd"<br>
+</div>
+<p>
+<tt>(CSOUND-FILE <i>{filename}</i> <i>{karo}</i>))</tt> outputs <tt>karo</tt> as a Csound file named by <tt>filename</tt>. This is mainly useful when working outside Z<sub>12</sub>.
+</p>
+<hr>
+&copy; 2013 Daniel Schell &amp; Ola Rinta-Koski
+</body>
+</html>
+
