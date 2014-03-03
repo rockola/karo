@@ -1,7 +1,7 @@
 ;;;
 ;;; karo
 ;;;
-;;; Copyright (c) 2013, Ola Rinta-Koski & Daniel Schell
+;;; Copyright (c) 2014, Ola Rinta-Koski & Daniel Schell
 ;;; All rights reserved.
 ;;; 
 ;;; Redistribution and use in source and binary forms, with or without
@@ -44,15 +44,18 @@
 
 (in-package "KARO")
 
-(defparameter *karo-version* "1.106")
-(defparameter *karo-version-date* '("2013-05-29"
-				    "12:05:00"))
+(defparameter *karo-version* "1.107")
+(defparameter *karo-version-date* '("2014-03-02"
+				    "18:00:00"))
 
 (defvar *notes-in-group* 12)
 (defvar *n-ad-size* 3)
 
 (defparameter *group-sizes* '(6 9 12 19 24))
 (defparameter *default-group-size* 12)
+
+(defun z12-p () (= *notes-in-group* 12))
+(defun z24-p () (= *notes-in-group* 24))
 
 (defun factorial (x)
   (unless (and (integerp x) (>= x 0))
@@ -155,7 +158,7 @@ be split even if they contain an instance of CH."
   (multiple-value-bind (version date time)
       (karo-version)
     (format stream "~&Karo Engine v~A ~A ~A~%~
-\(c) 2001-2013 Daniel Schell and Ola Rinta-Koski~%~
+\(c) 2001-2014 Daniel Schell and Ola Rinta-Koski~%~
 http://ola.rinta-koski.net/karo/  for more info~%"
             version date time)
     version))
@@ -507,10 +510,18 @@ If REFERENCE is not NIL, return name of CHORD as referenced."
   (reference (lowest-ambitus (normalize (read-chord chord)))))
 
 
-(defun karo-structure-chord (chord &optional reference (basic-form t))
+(defun karo-structure-chord (chord &key (reference nil) (basic-form t) (simplify nil))
   (multiple-value-bind (interval base)
       (chord-name (funcall (if basic-form #'basic-form #'identity) chord) reference)
-    (list interval base)))
+    ;; IF simplify THEN 5,2(i) -> 2,5(i+5) (only in Z12)
+    (if (and simplify
+	     (z12-p)
+	     (= (first interval) 5)
+	     (= (second interval) 2))
+	(list (list (second interval)
+		    (first interval))
+	      (mod (+ base 5) *notes-in-group*))
+      (list interval base))))
 
 
 (defun perm-key (karo-structure-part)
@@ -552,28 +563,99 @@ If REFERENCE is not NIL, return name of CHORD as referenced."
        sum (* i c)))
 
 
+(defun transpose-structure (chord-structure transposition-interval &key (simplify nil))
+  (mapcar #'(lambda (x)
+	      (list (first x)
+		    (if (and simplify (equal (first x) '(4 4)))
+			(mod (mod (- (second x) transposition-interval)
+				  *notes-in-group*)
+			     4)
+		      (mod (- (second x) transposition-interval)
+			   *notes-in-group*))))
+	  chord-structure))
+
+
+(defun normalization-candidates (karo-chord-structure)
+  (let ((chord-structure (mapcar #'(lambda (c)
+				     (karo-structure-chord (structure-to-chord c) :simplify t))
+				 karo-chord-structure)))
+    (loop for offset in (mapcar #'second chord-structure)
+	  for candidate = (sort (transpose-structure chord-structure offset :simplify t) #'chord<)
+	  for score = (chord-structure-score candidate)
+	  collecting (cons score candidate))))
+
+
 (defmethod normalize-chord-structure ((a-chord-structure list))
-  (let ((best-score most-positive-fixnum)
-	normalized
-	(offset 0)
-	(chord-structure (mapcar #'(lambda (c)
-				     (karo-structure-chord (structure-to-chord c)))
-				 a-chord-structure)))
-    (dotimes (i (length chord-structure))
-      (let* ((offset-candidate (second (nth i chord-structure)))
-	     (candidate (mapcar #'(lambda (c)
-				    (destructuring-bind (intervals root)
-					c
-				      (list intervals (mod (- root offset)
-							   *notes-in-group*))))
-				chord-structure))
-	     (score (chord-structure-score candidate)))
-	(when (< score best-score)
-	  (setq normalized candidate)
-	  (setq offset offset-candidate)
-	  (setq best-score score))))
-    (sort normalized #'chord<)))
-		    
+  (let ((candidates (normalization-candidates a-chord-structure)))
+    (rest (first (sort candidates #'< :key #'first)))))
+#|
+	  collecting (cons score candidate))))
+    (second (first (sort (mapcar #'(lambda (x)
+				     (let ((candidate (sort (transpose-structure chord-structure x) #'chord<)))
+				       (cons (chord-structure-score candidate) candidate)))
+				 (mapcar #'second chord-structure))
+			 #'<
+			 :key #'first)))))
+
+
+    ;; Special cases:
+    ;; structures of form a,b(x) a,b(y) c,d(z) e,f(m)
+    ;; and a,b(x) a,b(y) a,b(z) c,d(m)
+    ;; have to be "further normalized"
+    ;; Examples:
+    ;; a)
+    ;; 1st: 2,5(i) 2,5(i+4) 3,1(i+5) 3,2(i+10)
+    ;; is equal to
+    ;; 2nd: 2,5(i) 2,5(i+8) 3,1(i+1) 3,2(i+6)
+    ;; (subtract 8 from the roots in 2nd to get 1st)
+    ;; and the canonical form is 1st (roots in ascending order)
+    ;; b)
+    ;; 1st: 1,3(i) 1,3(i+2) 1,3(i+7) 4,1(i+5)
+    ;; is equal to
+    ;; 2nd: 1,3(i) 1,3(i+5) 1,3(i+2) 4,1(i+10)
+    ;; (subtract 5 from the roots in 2nd to get 1st)
+    ;; and the canonical form is 1st (roots in ascending order)
+    (when (equal (first (first normalized))
+		 (first (second normalized)))
+      (let ((first-root-interval (- (second (second normalized))
+				    (second (first normalized))))
+	    (second-root-interval (- (second (third normalized))
+				     (second (second normalized)))))
+	(cond ((equal (first (first normalized))
+		      (first (third normalized)))
+	       ;; case b)
+	       (let ((candidates (mapcar #'(lambda (n)
+					    (sort (transpose-structure normalized n) #'chord<))
+					(list (second (second normalized))
+					      (second (third normalized))))))
+		 (loop for c in candidates
+		       for s = (chord-structure-score c)
+		       with score = (chord-structure-score normalized)
+		       when (< s score)
+		       do (setq normalized c) (setq score s))))
+	      ;;
+	      (t
+	       ;; case a)
+	       (when (>= first-root-interval (ceiling (/ *notes-in-group* 2)))
+		 (let ((candidate (sort (transpose-structure normalized first-root-interval)
+					#'chord<)))
+		   ;; if root of 3rd "chord" is smaller in candidate,
+		   ;; let's pick that
+		   (when (< (second (third candidate))
+			    (second (third normalized)))
+		     (format t "~&Replace ~A with ~A" normalized candidate)
+		     (setq normalized candidate))))))))
+    ;; Root of first interval has to be i, so let's transpose if needed
+    (let ((first-structure-root (second (first normalized))))
+      (cond ((> first-structure-root 0)
+	     (transpose-structure normalized first-structure-root))
+	    (t
+	     normalized)))))
+|#		    
+
+(defmethod normalize-chord-structure ((karo karo))
+  (normalize-chord-structure (karo-structure karo)))
+
 
 (defun show-chord-name (chord &optional reference)
   "Show name of CHORD."
@@ -1103,7 +1185,9 @@ otherwise signal an error."
 
 (defmethod karo-structure ((karo karo) &optional reference (basic-form t))
   (let ((intervals-and-bases
-	 (sort (mapcar #'(lambda (x) (karo-structure-chord x reference basic-form))
+	 (sort (mapcar #'(lambda (x) (karo-structure-chord x 
+							   :reference reference
+							   :basic-form basic-form))
 		       (as-chords karo))
 	       #'(lambda (a b)
 		   (tree< (first a) (first b)))))
@@ -1115,11 +1199,7 @@ otherwise signal an error."
 	      append (first (sort (list-permutations (gethash k ib-hash))
 				  #'(lambda (a b)
 				      (< (perm-key a) (perm-key b))))))))
-      (normalize-chord-structure chord-structures))))
-
-
-(defmethod normalize-chord-structure ((karo karo))
-  (normalize-chord-structure (karo-structure karo)))
+      chord-structures)))
 
 
 (defun karo-structures (&optional karo-list)
@@ -1191,7 +1271,7 @@ Comparisons are made one element at a time from left."
     (values the-connections)))
 
 
-(defun structures-file (&key (filename "/tmp/structures.csv") structures connections)
+(defun structures-file (&key (filename "/tmp/structures.csv") structures connections (full nil))
   (default structures (karo-structures))
   (default connections (karo-connections :structures structures))
   (let ((suffix ".csv"))
@@ -1210,14 +1290,20 @@ Comparisons are made one element at a time from left."
     (loop for k in (gethash :keys connections)
        do (destructuring-bind (v best-connections tas-vector tas karo-indexes equal-tas)
 	      (gethash k connections)
-	    (format s "~&\"~A\";~D;~D;~A;~:[\"N\"~;~];\"~A\";\"~A\"~%"
-		    (structure-formatted k)
-		    (length v)
-		    tas
-		    (format nil "\"~{~D~^,~}\"" karo-indexes)
-		    equal-tas
-		    (format nil "~A" tas-vector)
-		    (format nil "~A" (second (first best-connections)))))))
+	    (if full
+		(format s "~&\"~A\";~D;~D;~A;~:[\"N\"~;~];\"~A\";\"~A\"~%"
+			(structure-formatted k)
+			(length v)
+			tas
+			(format nil "\"~{~D~^,~}\"" karo-indexes)
+			equal-tas
+			(format nil "~A" tas-vector)
+			(format nil "~A" (second (first best-connections))))
+	      (format s "~&\"~A\";~D;~D;~A~%"
+		      (structure-formatted k)
+		      (length v)
+		      tas
+		      (format nil "\"~{~D~^,~}\"" karo-indexes))))))
   filename)
 
 
@@ -2047,12 +2133,12 @@ showpage
 
 
 (defun split-directory-name (x &optional (split +default-split+))
-  (unless (and (integerp x) (> x 0) (<= x +max-karo+))
-    (error "X has to be an integer between ~D and ~D, was ~A -- SPLIT-DIRECTORY-NAME" 1 +max-karo+ x))
-  (unless (and (integerp split) (> split 0) (<= split +max-karo+))
-    (error "SPLIT has to be an integer between ~D and ~D, was ~A -- SPLIT-DIRECTORY-NAME" 1 +max-karo+ split))
+  (unless (and (integerp x) (> x 0) (<= x (max-karo)))
+    (error "X has to be an integer between ~D and ~D, was ~A -- SPLIT-DIRECTORY-NAME" 1 (max-karo) x))
+  (unless (and (integerp split) (> split 0) (<= split (max-karo)))
+    (error "SPLIT has to be an integer between ~D and ~D, was ~A -- SPLIT-DIRECTORY-NAME" 1 (max-karo) split))
   (let ((start (1+ (* split (floor (/ (1- x) split)))))
-	(end (min +max-karo+ (* split (floor (/ (+ (1- x) split) split))))))
+	(end (min (max-karo) (* split (floor (/ (+ (1- x) split) split))))))
     (format nil "~D-~D" start end)))
 
 
@@ -2060,13 +2146,13 @@ showpage
   (loop with dirs
      with start = 1
      with end = split
-     while (<= end +max-karo+)
+     while (<= end (max-karo))
      do 
        (push (split-directory-name start split) dirs)
-       (if (= end +max-karo+)
+       (if (= end (max-karo))
 	   (setf end most-positive-fixnum)
 	   (setf start (1+ end)
-		 end (min (+ end split) +max-karo+)))
+		 end (min (+ end split) (max-karo))))
      finally
        (return (nreverse dirs))))
 
