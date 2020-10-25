@@ -42,7 +42,7 @@
 
 #+cormanlisp
 (defun cd (new-directory)
-  (setf (cormanlisp:current-directory) (pathname new-directory)))
+  (setf (ccl:current-directory) (pathname new-directory)))
 
 (defpackage :karo
   (:use :common-lisp)
@@ -107,6 +107,7 @@
    (distances)
    (connections :initform nil)))
 
+
 (defun karo-p (x)
   (cond ((typep x 'karo) t)
 	(t nil)))
@@ -121,8 +122,6 @@
 
 (defmacro alias (alias fn)
   `(setf (symbol-function (quote ,alias)) (symbol-function (quote ,fn))))
-
-
 
 
 (defun split (str &optional (ch #\Space) (quote #\"))
@@ -164,9 +163,9 @@ be split even if they contain an instance of CH."
   (multiple-value-bind (version date time)
       (karo-version)
     (format stream "~&Karo Engine v~A ~A ~A~%~
-\(c) 2001-2014 Daniel Schell and Ola Rinta-Koski~%~
+\(c) 2001-~A Daniel Schell and Ola Rinta-Koski~%~
 http://ola.rinta-koski.net/karo/  for more info~%"
-            version date time)
+            version date time (first (split date #\-)))
     version))
 
 
@@ -1100,7 +1099,8 @@ otherwise signal an error."
     (if (> (abs total-salto) (* 6 (length a)))
 	;;
 	(let ((b2 (transpose b (if (> total-salto 0) -12 12))))
-	  ;; (karo-debug "SALTO-VALUES-CHORD ~A ~A total salto ~A, trying ~A ~A" a b total-salto a b2)
+	  ;; (karo-debug "SALTO-VALUES-CHORD ~A ~A total salto ~A, trying ~A ~A"
+	  ;;             a b total-salto a b2)
 	  (salto-values-chord a b2
 			      :adjust adjust
 			      :reject-translation reject-translation))
@@ -1119,9 +1119,9 @@ otherwise signal an error."
 (alias salto-tas third)
 (alias salto-vdv fourth)
 
+
 (defun total-tas (saltos)
   (reduce #'+ saltos :key #'salto-tas))
-
 
 
 (defun salto-values-karo (karo-list &key reject-translation)
@@ -1366,8 +1366,11 @@ Comparisons are made one element at a time from left."
 			   (karo-debug "Connections ~A" connections)
 			   (mapcar #'(lambda (x)
 				       (cond ((< (tas x) tas)
-					      ;; something weird has happened as TAS of first in the list should
-					      ;; also be smallest
+					      ;; something weird has
+					      ;; happened as TAS of
+					      ;; first in the list
+					      ;; should also be
+					      ;; smallest
 					      (error "TAS of ~A is ~A but should not be smaller than ~A" 
 						     x (tas x) tas))
 					     ((= (tas x) tas)
