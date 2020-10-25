@@ -33,10 +33,16 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;;; See 
-;;; http://ola.rinta-koski.net/karo/
+;;; https://ola.rinta-koski.net/karo/
 ;;; for more info
 
 ;;;;;;;;;;;;;;;;
+
+(in-package "COMMON-LISP")
+
+#+cormanlisp
+(defun cd (new-directory)
+  (setf (cormanlisp:current-directory) (pathname new-directory)))
 
 (defpackage :karo
   (:use :common-lisp)
@@ -44,9 +50,9 @@
 
 (in-package "KARO")
 
-(defparameter *karo-version* "1.107")
-(defparameter *karo-version-date* '("2014-03-02"
-				    "18:00:00"))
+(defparameter *karo-version* "1.108")
+(defparameter *karo-version-date* '("2020-10-25"
+				    "08:00:00"))
 
 (defvar *notes-in-group* 12)
 (defvar *n-ad-size* 3)
@@ -1316,6 +1322,7 @@ Comparisons are made one element at a time from left."
        do
 	 (destructuring-bind (v best-connections tas-vector tas karo-indexes equal-tas)
 	     (gethash key connections)
+	   (declare (ignore v best-connections tas-vector karo-indexes equal-tas))
 	   (push key (gethash tas stats)))
        finally
 	 (let ((stat-keys (loop for k being each hash-key of stats
@@ -1408,7 +1415,9 @@ Mirror images are not considered."
 
 
 (defun best-connections (candidates)
-  (let ((best-connection-hash (make-hash-table :test #'equal)))
+  (let ((best-connection-hash (make-hash-table :test #'equal))
+	(smallest-tas most-positive-fixnum)
+	best-connection)
     (dolist (candidate candidates)
       (let* ((salto-values (salto-values candidate))
 	     (best-connection-key (mapcan #'rest salto-values))
@@ -1417,8 +1426,8 @@ Mirror images are not considered."
 	       ;; This permutation is better than any of the ones
 	       ;; found so far
 	       (clrhash best-connection-hash)
-	       (push permutation (gethash best-connection-key
-					  best-connection-hash))
+	       (push candidate (gethash best-connection-key
+					best-connection-hash))
 	       (setf best-connection candidate
 		     smallest-tas tas))
 	      ;;
@@ -1565,6 +1574,7 @@ otherwise return NIL."
 	(force-output))
       (destructuring-bind (tas best-connection original-chords tas-vector salto-values)
 	  (connect karo)
+	(declare (ignore original-chords tas-vector))
 	(when (> tas tas-maximum)
 	  (setf tas-maximum tas
 		tas-maximum-karo nil))
@@ -2000,6 +2010,7 @@ x r 40 add add y moveto
 
 
 (defun svg-connection-diagram (stream karo-index list-of-chords)
+  (declare (ignore karo-index))
   (let* ((scale-x 80)
 	 (scale-y 14)
 	 (max-y 24)
