@@ -50,8 +50,8 @@
 
 (in-package "KARO")
 
-(defparameter *karo-version* "1.108")
-(defparameter *karo-version-date* '("2020-10-25"
+(defparameter *karo-version* "1.109")
+(defparameter *karo-version-date* '("2023-04-13"
 				    "08:00:00"))
 
 (defvar *notes-in-group* 12)
@@ -1829,12 +1829,13 @@ x y moveto
 			       (tag s 'encoding-date nil
 				    (format s "~A" (today)))
 			       (tag s 'software nil
-				    (format s "~A (~A ~A) on ~A ~A"
+				    (format s "~A (~A ~A)" ; on ~A ~A"
 					    (karo-version-string)
 					    (lisp-implementation-type)
 					    (lisp-implementation-version)
-					    (software-type)
-					    (software-version)))
+					    ;(software-type)
+					    ;(software-version)
+					    ))
 			       (tag s 'encoding-description nil
 				    (format s "Representation of Karo as chords"))))
 		     (tag s 'part-list nil
