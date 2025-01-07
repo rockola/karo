@@ -1,7 +1,7 @@
 ;;;
 ;;; karo
 ;;;
-;;; Copyright (c) 2014, Ola Rinta-Koski & Daniel Schell
+;;; Copyright (c) 2014-2025 Ola Rinta-Koski & Daniel Schell
 ;;; All rights reserved.
 ;;; 
 ;;; Redistribution and use in source and binary forms, with or without
@@ -50,18 +50,26 @@
 
 (in-package "KARO")
 
-(defparameter *karo-version* "1.110")
-(defparameter *karo-version-date* '("2023-10-09"
-				    "13:37:00"))
+(defparameter *karo-version* "1.111")
+(defparameter *karo-version-date* '("2025-01-07"
+				    "08:00:00"))
 
-(defvar *notes-in-group* 12)
-(defvar *n-ad-size* 3)
+(defconstant +z6+ 6)
+(defconstant +z9+ 9)
+(defconstant +z12+ 12)
+(defconstant +z19+ 19)
+(defconstant +z24+ 24)
+(defconstant +triads+ 3)
+(defconstant +tetrads+ 4)
 
-(defparameter *group-sizes* '(6 9 12 19 24))
-(defparameter *default-group-size* 12)
+(defvar *notes-in-group* +z12+)
+(defvar *n-ad-size* +triads+)
 
-(defun z12-p () (= *notes-in-group* 12))
-(defun z24-p () (= *notes-in-group* 24))
+(defparameter *group-sizes* (list +z6+ +z9+ +z12+ +z19+ +z24+))
+(defparameter *default-group-size* +z12+)
+
+(defun z12-p () (= *notes-in-group* +z12+))
+(defun z24-p () (= *notes-in-group* +z24+))
 
 (defun factorial (x)
   (unless (and (integerp x) (>= x 0))
@@ -75,11 +83,11 @@
     (/ (factorial z) (* (factorial (/ z n)) (expt (factorial n) (/ z n))))))
 
 
-(defconstant +max-z6-karo+ (number-of-karos 6)
+(defconstant +max-z6-karo+ (number-of-karos +z6+)
   "Number of possible 6-note karos")
-(defconstant +max-z9-karo+ (number-of-karos 9)
+(defconstant +max-z9-karo+ (number-of-karos +z9+)
   "Number of possible 9-note karos")
-(defconstant +max-z12-karo+ (number-of-karos 12)
+(defconstant +max-z12-karo+ (number-of-karos +z12+)
   ;; 12! / (4! * (3!)^4) = 15400
   "Number of possible 12-note karos with chords of size 3")
 
@@ -89,9 +97,9 @@
 (defun max-karo (&optional group-size)
   (default group-size *notes-in-group*)
   (ecase group-size
-    (6  +max-z6-karo+)
-    (9  +max-z9-karo+)
-    (12 +max-z12-karo+)))
+    (+z6+  +max-z6-karo+)
+    (+z9+  +max-z9-karo+)
+    (+z12+ +max-z12-karo+)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -169,7 +177,7 @@ http://ola.rinta-koski.net/karo/  for more info~%"
     version))
 
 
-(defun work-on (&optional (z 12) (n 3) force)
+(defun work-on (&optional (z +z12+) (n +triads+) force)
   "Configure Karo Engine to work on a Z group divided in n-ads of size N.
 
 Arguments:
@@ -232,6 +240,22 @@ Examples:
           (read-chord chord)))
 
 
+(defun difference (set-1 set-2)
+  "A version of SET-DIFFERENCE that guarantees original order."
+  (loop for c in set-1
+	unless (find c set-2)
+	  collect c))
+
+
+(defun get-groupings (notes &optional (n-ad-size *n-ad-size*))
+  (if (= n-ad-size (length notes))
+      (list notes)
+      (loop for n-ad in (combination n-ad-size notes)
+            for rest-of-notes = (difference notes n-ad)
+            collect (mapcar #'(lambda (x) (concatenate 'list n-ad x))
+                            (get-groupings rest-of-notes n-ad-size)))))
+
+
 (defun groupings (notes &optional (n-ad-size *n-ad-size*))
   "Returns all lexicographic groupings of N-AD-SIZE for NOTES
 
@@ -241,24 +265,35 @@ Example: (with *N-AD-SIZE* 3)
  (1 3 5 2 4 6) (1 3 6 2 4 5) (1 4 5 2 3 6) (1 4 6 2 3 5) (1 5 6 2 3 4))"
   (unless (= (rem (length notes) n-ad-size) 0)
     (error "Length of note list ~A must be multiple of ~A" notes n-ad-size))
-  (if (= (length notes) n-ad-size)
-      (list notes)
-      ;;
-      (flet ((difference (set-1 set-2)
-	       ;; A version of SET-DIFFERENCE that guarantees
-	       ;; original order
-	       (loop for c in set-1
-		  unless (find c set-2)
-		  collect c)))
-	(loop for j on (rest notes)
-	   nconc (loop for k on (rest j)
-		    for first-group = (list (first notes)
-					    (first j)
-					    (first k))
-		    nconc (mapcar #'(lambda (x)
-				      (append first-group x))
-				  (groupings (difference notes first-group)
-					     n-ad-size)))))))
+  (cond ((= (length notes) n-ad-size)
+         (list notes))
+         ;;
+        ((= n-ad-size 3)
+         (loop for j on (rest notes)
+	       nconc (loop for k on (rest j)
+		           for first-group = (list (first notes)
+					           (first j)
+					           (first k))
+		           nconc (mapcar #'(lambda (x)
+				             (append first-group x))
+				         (groupings (difference notes first-group)
+					            n-ad-size)))))
+        ((= n-ad-size 4)
+         (loop for j on (rest notes)
+	       nconc (loop for k on (rest j)
+                           nconc (loop for m on (rest k)
+		                       for first-group = (list (first notes)
+					                       (first j)
+					                       (first k)
+                                                               (first m))
+		                       nconc (mapcar #'(lambda (x)
+				                         (append first-group x))
+				                     (groupings (difference notes first-group)
+					                        n-ad-size))))))
+        (t
+         (error (format nil "n-ad-size is ~A" n-ad-size)))))
+
+
 
 
 #|
@@ -1095,10 +1130,12 @@ otherwise signal an error."
 			   adjust
 			   reject-translation)
   ;; (karo-debug "SALTO-VALUES-CHORD ~A ~A" a b)
-  (let ((total-salto (total-salto a b :adjust adjust)))
+  (let ((total-salto (total-salto a b :adjust adjust))
+        (plus-octave *notes-in-group*)
+        (minus-octave (- *notes-in-group*)))
     (if (> (abs total-salto) (* 6 (length a)))
 	;;
-	(let ((b2 (transpose b (if (> total-salto 0) -12 12))))
+	(let ((b2 (transpose b (if (> total-salto 0) minus-octave plus-octave))))
 	  ;; (karo-debug "SALTO-VALUES-CHORD ~A ~A total salto ~A, trying ~A ~A"
 	  ;;             a b total-salto a b2)
 	  (salto-values-chord a b2
