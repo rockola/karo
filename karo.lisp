@@ -50,7 +50,7 @@
 
 (in-package "KARO")
 
-(defparameter *karo-version* "1.111")
+(defparameter *karo-version* "1.112")
 (defparameter *karo-version-date* '("2025-01-07"
 				    "08:00:00"))
 
@@ -70,6 +70,8 @@
 
 (defun z12-p () (= *notes-in-group* +z12+))
 (defun z24-p () (= *notes-in-group* +z24+))
+
+(defun all-notes () (loop for n below *notes-in-group* collect n))
 
 (defun factorial (x)
   (unless (and (integerp x) (>= x 0))
@@ -91,15 +93,19 @@
   ;; 12! / (4! * (3!)^4) = 15400
   "Number of possible 12-note karos with chords of size 3")
 
+(defconstant +max-karos+ (list (cons +z6+ +max-z6-karo+)
+			       (cons +z9+ +max-z9-karo+)
+			       (cons +z12+ +max-z12-karo+)))
+
 (defmacro default (var value)
   `(unless ,var (setf ,var ,value)))
 
 (defun max-karo (&optional group-size)
   (default group-size *notes-in-group*)
-  (ecase group-size
-    (+z6+  +max-z6-karo+)
-    (+z9+  +max-z9-karo+)
-    (+z12+ +max-z12-karo+)))
+  (let ((number-of-karos (assoc group-size +max-karos+)))
+    (if number-of-karos
+	number-of-karos
+	(t (error (format nil "GROUP-SIZE must be one of ~A" (mapcar #'car +max-karos+)))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -256,8 +262,8 @@ Examples:
                             (get-groupings rest-of-notes n-ad-size)))))
 
 
-(defun groupings (notes &optional (n-ad-size *n-ad-size*))
-  "Returns all lexicographic groupings of N-AD-SIZE for NOTES
+(defun groupings (&optional (notes (all-notes)) (n-ad-size *n-ad-size*))
+  "Returns all lexicographic groupings of N-AD-SIZE for NOTES.
 
 Example: (with *N-AD-SIZE* 3)
 \(groupings '(1 2 3 4 5 6)) =>
@@ -1403,11 +1409,8 @@ Comparisons are made one element at a time from left."
 			   (karo-debug "Connections ~A" connections)
 			   (mapcar #'(lambda (x)
 				       (cond ((< (tas x) tas)
-					      ;; something weird has
-					      ;; happened as TAS of
-					      ;; first in the list
-					      ;; should also be
-					      ;; smallest
+					      ;; something weird has happened as TAS of first in the
+					      ;; list should also be smallest
 					      (error "TAS of ~A is ~A but should not be smaller than ~A" 
 						     x (tas x) tas))
 					     ((= (tas x) tas)
