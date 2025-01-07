@@ -50,9 +50,9 @@
 
 (in-package "KARO")
 
-(defparameter *karo-version* "1.109")
-(defparameter *karo-version-date* '("2023-04-13"
-				    "08:00:00"))
+(defparameter *karo-version* "1.110")
+(defparameter *karo-version-date* '("2023-10-09"
+				    "13:37:00"))
 
 (defvar *notes-in-group* 12)
 (defvar *n-ad-size* 3)
@@ -1315,7 +1315,7 @@ Comparisons are made one element at a time from left."
 
 (defun stats (&key (filename "/tmp/stats.txt") structures connections)
   (default structures (karo-structures))
-  (default connections (karo-connections structures))
+  (default connections (karo-connections :structures structures))
   (with-open-file (s filename :direction :output :if-exists :supersede)
     (loop for key in (gethash :keys connections)
        with stats = (make-hash-table)
@@ -1522,7 +1522,15 @@ otherwise return NIL."
     t))
 	  
 
-(defun connect-chord-list (list-of-chords &key reject-translation)
+(defun closed-voicing (triad)
+  (if (> (- (third triad) (first triad)) *notes-in-group*)
+      (list (first triad)
+	    (- (third triad) *notes-in-group*)
+	    (second triad))
+      triad))
+
+
+(defun connect-chord-list (list-of-chords &key reject-translation closed-form)
   (let* ((c (mapcar #'first-octave-reference list-of-chords))
 	 (salto-list (salto-list c))
 	 (tas-list (tas-list salto-list))
@@ -1530,37 +1538,53 @@ otherwise return NIL."
 		       (has-translation salto-list))
 		  most-positive-fixnum
 		  (reduce #'+ tas-list))))
-    (list tas c list-of-chords tas-list salto-list)))
+    (list tas
+	  (if closed-form
+	      (mapcar #'closed-voicing c)
+	      c)
+	  list-of-chords
+	  tas-list
+	  salto-list)))
 
 
 (defun extremum (list predicate &key (key #'identity) key-value-only)
   (loop for x in list
-       for v = (funcall key x)
-       with result
-       with value
-       when (or (not result)
-		(funcall predicate v value))
-       do
-       (setf result x
-	     value v)
-       finally (return (if key-value-only
-			   value
-			   (values result value)))))
+	for v = (funcall key x)
+	with result
+	with value
+	when (or (not result)
+		 (funcall predicate v value))
+	  do (setf result x
+		   value v)
+	finally (return (if key-value-only
+			    value
+			    (values result value)))))
 
 
-(defmethod connect ((karo-list list) &key (reject-translation t) (fixed-order nil))
+(defmethod connect ((karo-list list)
+		    &key
+		      (reject-translation t)
+		      (fixed-order nil)
+		      (closed-form nil))
   "Find optimal connection of chords within a list of notes."
-  (loop for c in (if fixed-order
-		     (chord-permutations (as-chords karo-list))
-		     (all-permutations (as-chords karo-list)))
-     collect (connect-chord-list c :reject-translation reject-translation) into result
-     finally (return (values (extremum result #'< :key #'first)))))
+  (let ((result (loop for c in (if fixed-order
+				   (chord-permutations (as-chords karo-list))
+				   (all-permutations (as-chords karo-list)))
+		      collect (connect-chord-list c
+						  :reject-translation reject-translation
+						  :closed-form closed-form))))
+    (values (extremum result #'< :key #'first))))
 
 
-(defmethod connect ((karo karo) &key (reject-translation t) (fixed-order nil))
+(defmethod connect ((karo karo)
+		    &key
+		      (reject-translation t)
+		      (fixed-order nil)
+		      (closed-form nil))
   (connect (notes karo) 
 	   :reject-translation reject-translation 
-	   :fixed-order fixed-order))
+	   :fixed-order fixed-order
+	   :closed-form closed-form))
 
 
 (defmethod all-connections (&key (clobber t) (file-name "/tmp/all_connections.txt"))
@@ -1652,6 +1676,7 @@ otherwise return NIL."
 	    for j from 1
 	    do (format stream "~&Connection ~@R.~D: ~A" i j karo))))
   (values))
+
 
 
 ;;;;;;;;;;;;;;;;
