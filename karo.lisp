@@ -3,19 +3,19 @@
 ;;;
 ;;; Copyright (c) 2014-2025 Ola Rinta-Koski & Daniel Schell
 ;;; All rights reserved.
-;;; 
+;;;
 ;;; Redistribution and use in source and binary forms, with or without
 ;;; modification, are permitted provided that the following conditions
 ;;; are met:
-;;; 
+;;;
 ;;;     Redistributions of source code must retain the above copyright
 ;;;     notice, this list of conditions and the following disclaimer.
-;;; 
+;;;
 ;;;     Redistributions in binary form must reproduce the above
 ;;;     copyright notice, this list of conditions and the following
 ;;;     disclaimer in the documentation and/or other materials
 ;;;     provided with the distribution.
-;;; 
+;;;
 ;;; THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
 ;;; CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
 ;;; INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
@@ -32,8 +32,8 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;;; See 
-;;; https://ola.rinta-koski.net/karo/
+;;; See
+;;; https://rockola.github.io/karo/
 ;;; for more info
 
 ;;;;;;;;;;;;;;;;
@@ -50,9 +50,10 @@
 
 (in-package "KARO")
 
-(defparameter *karo-version* "1.112")
-(defparameter *karo-version-date* '("2025-01-07"
+(defparameter *karo-version* "1.113")
+(defparameter *karo-version-date* '("2025-01-09"
 				    "08:00:00"))
+(defconstant +karo-url+ "https://rockola.github.io/karo/")
 
 (defconstant +z6+ 6)
 (defconstant +z9+ 9)
@@ -104,8 +105,8 @@
   (default group-size *notes-in-group*)
   (let ((number-of-karos (assoc group-size +max-karos+)))
     (if number-of-karos
-	number-of-karos
-	(t (error (format nil "GROUP-SIZE must be one of ~A" (mapcar #'car +max-karos+)))))))
+	(cdr number-of-karos)
+	(error (format nil "GROUP-SIZE must be one of ~A" (mapcar #'car +max-karos+))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -127,11 +128,25 @@
 	(t nil)))
 
 
-(defun today ()
+(defun current-date-and-time ()
   (multiple-value-bind (s m h d mo y)
       (get-decoded-time)
-    (declare (ignore s m h))
-    (format nil "~4,,,'0@A-~2,,,'0@A-~2,,,'0@A" y mo d)))
+    (values (format nil "~4,,,'0@A-~2,,,'0@A-~2,,,'0@A" y mo d)
+	    (format nil "~2,,,'0@A:~2,,,'0@A:~2,,,'0@A" h m s))))
+
+
+(defun today ()
+  (multiple-value-bind (date time)
+      (current-date-and-time)
+    (declare (ignore time))
+    date))
+
+
+(defun now ()
+  (multiple-value-bind (date time)
+      (current-date-and-time)
+    (declare (ignore date))
+    time))
 
 
 (defmacro alias (alias fn)
@@ -178,8 +193,8 @@ be split even if they contain an instance of CH."
       (karo-version)
     (format stream "~&Karo Engine v~A ~A ~A~%~
 \(c) 2001-~A Daniel Schell and Ola Rinta-Koski~%~
-http://ola.rinta-koski.net/karo/  for more info~%"
-            version date time (first (split date #\-)))
+~A for more info~%"
+            version date time (first (split date #\-)) +karo-url+)
     version))
 
 
@@ -205,7 +220,7 @@ configures KE to work on Z12 divided in 3-note chords (triads, the default)"
 
 (defun read-chord (list-or-string)
   "Make sure a chord is given in list form.
-If LIST-OR-STRING is a list, return that list. 
+If LIST-OR-STRING is a list, return that list.
 If LIST-OR-STRING is a string, return that string converted into a list.
 The string is assumed to be of known format.
 Examples:
@@ -214,7 +229,7 @@ Examples:
   (etypecase list-or-string
     (list list-or-string)
     (string
-     (let* ((as-list 
+     (let* ((as-list
 	     (read-from-string (format nil "(~A)" (substitute #\Space #\,
 							      list-or-string))))
 	    (base (caar (last as-list)))
@@ -311,11 +326,11 @@ Example: (with *N-AD-SIZE* 3)
 (let (all-groupings)
   (defun groups (group-size)
     (unless (assoc group-size all-groupings)
-      (push (cons group-size 
+      (push (cons group-size
 		  (groupings (loop for i below group-size collect i)))
 	    all-groupings))
     (assoc group-size all-groupings)))
-  
+
 
 
 (defun nth-group (index &optional (group-size *default-group-size*))
@@ -348,7 +363,7 @@ starts from 0."
 	 (cond ((null list)
 		(list nil))
 	       (t
-		(mapcan #'(lambda (first) 
+		(mapcan #'(lambda (first)
 			    (mapcar #'(lambda (rest)
 					(cons first rest))
 				    (list-permutations (remove first list
@@ -390,7 +405,7 @@ values are the adjusted note and T if the note was adjusted, NIL if
 the note was already in the correct range."
   (let* ((range-end (- (1- group-size) (floor (/ group-size 2))))
          (folded-note (mod note group-size))
-         (adjusted-note (if (> folded-note range-end)   
+         (adjusted-note (if (> folded-note range-end)
                             (- folded-note group-size)
 			    folded-note)))
     (values adjusted-note (not (= note adjusted-note)))))
@@ -576,31 +591,35 @@ If REFERENCE is not NIL, return name of CHORD as referenced."
 
 (defun structure-to-chord (structured-chord)
   ;; ((4 4) 3) -> (3 7 11)
-  (destructuring-bind ((first-interval second-interval) root)
+  ;; ((4 4 4) 3) -> (3 7 11 15)
+  (destructuring-bind ((first-interval second-interval &optional third-interval) root)
       structured-chord
-    (list root
-	  (+ root first-interval)
-	  (+ root first-interval second-interval))))
-
-
-(defun chord< (a b)
-  ;; input in ((a b) c) format
-  (flet ((sort-key (chord)
-	   (destructuring-bind ((interval-1 interval-2) root)
-	       chord
-	   (+ (* interval-1 100)
-	      (* interval-2 10)
-	      root))))
-    (< (sort-key a) (sort-key b))))
+    (if third-interval
+	(list root
+	      (+ root first-interval)
+	      (+ root first-interval second-interval)
+	      (+ root first-interval second-interval third-interval))
+	(list root
+	      (+ root first-interval)
+	      (+ root first-interval second-interval)))))
 
 
 (defun chord-score (chord)
-  ;; input in format ((a b) c)
-  (destructuring-bind ((interval-1 interval-2) root)
+  ;; input in ((i j) root) or ((i j k) root) format
+  (destructuring-bind ((interval-1 interval-2 &optional interval-3) root)
       chord
-    (+ (* 100 interval-1)
-       (* 10 interval-2)
-       root)))
+    (if interval-3
+	(+ (* interval-1 1000)
+	   (* interval-2 100)
+	   (* interval-3 10)
+	   root)
+	(+ (* interval-1 100)
+	   (* interval-2 10)
+	   root))))
+
+
+(defun chord< (a b)
+  (< (chord-score a) (chord-score b)))
 
 
 (defun chord-structure-score (chord-structure)
@@ -697,7 +716,7 @@ If REFERENCE is not NIL, return name of CHORD as referenced."
 	     (transpose-structure normalized first-structure-root))
 	    (t
 	     normalized)))))
-|#		    
+|#
 
 (defmethod normalize-chord-structure ((karo karo))
   (normalize-chord-structure (karo-structure karo)))
@@ -728,20 +747,25 @@ If REFERENCE is not NIL, return name of CHORD as referenced."
   (mapcar #'chord-name (as-chords karo)))
 
 
-(let (karos)
-  (defun all-karos (&optional (notes '(0 1 2 3 4 5 6 7 8 9 10 11)))
-    "Generate array of all karos"
-    (or (cdr (assoc *notes-in-group* karos))
+;; assoc list of "<notes-in-group> <n-ad-size>" and all matching karos, initialized on demand
+(defvar *all-karos* nil)
+
+
+(defun all-karos (&optional notes)
+  (default notes (all-notes))
+  "Generate array of all karos"
+  (let ((current-key (format nil "~A ~A" *notes-in-group* *n-ad-size*)))
+    (or (cdr (assoc current-key *all-karos*))
 	(let* ((notes (subseq notes 0 *notes-in-group*))
 	       (all-karos-in-z
-		(loop for i below (max-karo)
-		   with karo-array = (make-array (max-karo))
-		   do (setf (aref karo-array i) 
-			    (make-instance 'karo
-					   :karo-index (1+ i) ;; OFF-BY-ONE!
-					   :notes notes))
-		   finally (return karo-array))))
-	  (setf karos (cons (cons *notes-in-group* all-karos-in-z) karos))
+		 (loop for i below (max-karo)
+		       with karo-array = (make-array (max-karo))
+		       do (setf (aref karo-array i)
+				(make-instance 'karo
+					       :karo-index (1+ i) ;; OFF-BY-ONE!
+					       :notes notes))
+		       finally (return karo-array))))
+	  (setf *all-karos* (cons (cons current-key all-karos-in-z) *all-karos*))
 	  all-karos-in-z))))
 
 
@@ -884,8 +908,8 @@ In the example above, (0 2 7) becomes (1 3 8), (1 3 9) becomes (2 4 10) and so o
 
 
 ;; CL-USER> (show t #[300])
-;; 300    (0 1 3)   (2 4 7)   (5 6 8)   (9 10 11) 
-;;         1,2(0)    2,3(2)    1,2(5)    1,1(9)    
+;; 300    (0 1 3)   (2 4 7)   (5 6 8)   (9 10 11)
+;;         1,2(0)    2,3(2)    1,2(5)    1,1(9)
 ;; ; No value
 (defmethod show (stream (this karo))
   "Print a karo"
@@ -1037,6 +1061,10 @@ return its opposite."
     (analyze-notes (notes karo))))
 
 
+(defun hash-keys (hash &optional collector)
+  (default collector (lambda (x) x))
+  (loop for key being the hash-keys of hash collect (funcall collector key)))
+
 (defun classify-karos ()
   (karo-loop (i k)
     for a = (analyze k)
@@ -1055,8 +1083,7 @@ return its opposite."
 	     (push (list i)
 		   (gethash a classes)))))
     finally
-    (return (sort (loop for k being each hash-key of classes
-		     collect (cons k (nreverse (gethash k classes))))
+    (return (sort (hash-keys classes (lambda (k) (cons k (nreverse (gethash k classes)))))
 		  #'string< :key #'first))))
 
 
@@ -1234,7 +1261,7 @@ otherwise signal an error."
 
 (defmethod karo-structure ((karo karo) &optional reference (basic-form t))
   (let ((intervals-and-bases
-	 (sort (mapcar #'(lambda (x) (karo-structure-chord x 
+	 (sort (mapcar #'(lambda (x) (karo-structure-chord x
 							   :reference reference
 							   :basic-form basic-form))
 		       (as-chords karo))
@@ -1302,25 +1329,30 @@ Comparisons are made one element at a time from left."
 
 (defun karo-connections (&key structures (reject-translation t))
   (default structures (karo-structures))
-  (let ((keys (sort (loop for k being each hash-key of structures collect k)
-		    #'karo-structure<))
-	(the-connections (make-hash-table :test #'equal)))
+  (let ((keys (sort (hash-keys structures) #'karo-structure<))
+	(the-connections (make-hash-table :test #'equal))
+	(message-interval 100))
     (loop for k in keys
-       do (let* ((v (gethash k structures))
-		 (connections (mapcar #'(lambda (x) 
-					  (connect x :reject-translation reject-translation)) 
-				      v))
-		 (tas-vector (mapcar #'first connections))
-		 (tas (extremum connections #'< :key #'first :key-value-only t))
-		 (karo-indexes (sort (mapcar #'karo-index v) #'<))
-		 (equal-tas (apply #'= tas-vector)))
-	    (setf (gethash k the-connections)
-		  (list v connections tas-vector tas karo-indexes equal-tas))))
-    (setf (gethash :keys the-connections) keys)
+	  for i = 1 then (1+ i)
+	  do (let* ((v (gethash k structures))
+		    (connections (mapcar #'(lambda (x)
+					     (connect x :reject-translation reject-translation))
+					 v))
+		    (tas-vector (mapcar #'first connections))
+		    (tas (extremum connections #'< :key #'first :key-value-only t))
+		    (karo-indexes (sort (mapcar #'karo-index v) #'<))
+		    (equal-tas (apply #'= tas-vector)))
+	       (if (= (mod i message-interval) 0)
+		   (format t "~A... " i))
+	       (setf (gethash k the-connections)
+		     (list v connections tas-vector tas karo-indexes equal-tas)))
+	  finally
+	     (format t "~%"))
     (values the-connections)))
 
 
-(defun structures-file (&key (filename "/tmp/structures.csv") structures connections (full nil))
+(defun structures-file (&key filename structures connections (full nil))
+  (default filename "/tmp/structures.csv")
   (default structures (karo-structures))
   (default connections (karo-connections :structures structures))
   (let ((suffix ".csv"))
@@ -1329,30 +1361,35 @@ Comparisons are made one element at a time from left."
   (with-open-file (s filename
 		     :direction :output
 		     :if-exists :supersede)
-    (dolist (row (list (append (list (format nil "Karo Engine v~A" *karo-version*))
-			       *karo-version-date*)
+    (dolist (row (list (list (format nil "Karo Engine v~A" *karo-version*)
+			     (first *karo-version-date*)
+			     (second *karo-version-date*)
+			     ""
+			     "Structure file"
+			     (today)
+			     (now))
 		       '("Structure"
 			 "n of Karos"
 			 "TAS"
 			 "Karo indexes")))
       (format s "~&~{\"~A\"~^;~}~%" row))
-    (loop for k in (gethash :keys connections)
-       do (destructuring-bind (v best-connections tas-vector tas karo-indexes equal-tas)
-	      (gethash k connections)
-	    (if full
-		(format s "~&\"~A\";~D;~D;~A;~:[\"N\"~;~];\"~A\";\"~A\"~%"
-			(structure-formatted k)
-			(length v)
-			tas
-			(format nil "\"~{~D~^,~}\"" karo-indexes)
-			equal-tas
-			(format nil "~A" tas-vector)
-			(format nil "~A" (second (first best-connections))))
-	      (format s "~&\"~A\";~D;~D;~A~%"
-		      (structure-formatted k)
-		      (length v)
-		      tas
-		      (format nil "\"~{~D~^,~}\"" karo-indexes))))))
+    (loop for k being each hash-key of connections
+	  do (destructuring-bind (v best-connections tas-vector tas karo-indexes equal-tas)
+		 (gethash k connections)
+	       (if full
+		   (format s "~&\"~A\";~D;~D;~A;~:[\"N\"~;~];\"~A\";\"~A\"~%"
+			   (structure-formatted k)
+			   (length v)
+			   tas
+			   (format nil "\"~{~D~^,~}\"" karo-indexes)
+			   equal-tas
+			   (format nil "~A" tas-vector)
+			   (format nil "~A" (second (first best-connections))))
+		   (format s "~&\"~A\";~D;~D;~A~%"
+			   (structure-formatted k)
+			   (length v)
+			   tas
+			   (format nil "\"~{~D~^,~}\"" karo-indexes))))))
   filename)
 
 
@@ -1360,7 +1397,7 @@ Comparisons are made one element at a time from left."
   (default structures (karo-structures))
   (default connections (karo-connections :structures structures))
   (with-open-file (s filename :direction :output :if-exists :supersede)
-    (loop for key in (gethash :keys connections)
+    (loop for key in (hash-keys connections)
        with stats = (make-hash-table)
        do
 	 (destructuring-bind (v best-connections tas-vector tas karo-indexes equal-tas)
@@ -1368,9 +1405,7 @@ Comparisons are made one element at a time from left."
 	   (declare (ignore v best-connections tas-vector karo-indexes equal-tas))
 	   (push key (gethash tas stats)))
        finally
-	 (let ((stat-keys (loop for k being each hash-key of stats
-			     collect k into n
-			     finally (return (sort n #'<)))))
+	 (let ((stat-keys (sort (hash-keys stats) #'<)))
 	   (loop for k in stat-keys
 	      do
 		(format s "~&~D ~D~%" k (length (gethash k stats))))))))
@@ -1400,7 +1435,7 @@ Comparisons are made one element at a time from left."
 		   (karo-debug "Foo ~A" first-chord)
 		   (let ((connections
 			  (stable-sort
-			   (connect-two-sort first-chord second-chords 
+			   (connect-two-sort first-chord second-chords
 					     :reject-translation reject-translation
 					     :adjust adjust)
 			   #'< :key #'tas))) ; SORT BY total-absolute-salto
@@ -1411,7 +1446,7 @@ Comparisons are made one element at a time from left."
 				       (cond ((< (tas x) tas)
 					      ;; something weird has happened as TAS of first in the
 					      ;; list should also be smallest
-					      (error "TAS of ~A is ~A but should not be smaller than ~A" 
+					      (error "TAS of ~A is ~A but should not be smaller than ~A"
 						     x (tas x) tas))
 					     ((= (tas x) tas)
 					      x)
@@ -1428,7 +1463,7 @@ Comparisons are made one element at a time from left."
   (cond ((null list-of-chords)
 	 result)
 	((null result)
-	 (chord-permutations (rest list-of-chords) 
+	 (chord-permutations (rest list-of-chords)
 			     (list-permutations-unique (first list-of-chords))))
 	(t
 	 (chord-permutations (rest list-of-chords)
@@ -1437,7 +1472,7 @@ Comparisons are made one element at a time from left."
 				append (mapcar #'(lambda (y)
 						   (if (listp (caar result))
 						       (append r (list y))
-						       (cons (copy-list r) 
+						       (cons (copy-list r)
 							     (list (copy-list y)))))
 						p))))))
 
@@ -1534,7 +1569,7 @@ Mirror images are not considered."
 (defun candidates (list-of-chords)
   (loop for p in (list-permutations-unique list-of-chords)
      append (all-perms p)))
-	 
+
 
 (defun salto-list (list-of-chords)
    (loop for c on list-of-chords
@@ -1560,7 +1595,7 @@ otherwise return NIL."
 				(apply #'= x))
 			    salto-list))
     t))
-	  
+
 
 (defun closed-voicing (triad)
   (if (> (- (third triad) (first triad)) *notes-in-group*)
@@ -1621,8 +1656,8 @@ otherwise return NIL."
 		      (reject-translation t)
 		      (fixed-order nil)
 		      (closed-form nil))
-  (connect (notes karo) 
-	   :reject-translation reject-translation 
+  (connect (notes karo)
+	   :reject-translation reject-translation
 	   :fixed-order fixed-order
 	   :closed-form closed-form))
 
@@ -1635,7 +1670,7 @@ otherwise return NIL."
       with tas-minimum-karo
       with tas-maximum = 0
       with tas-maximum-karo
-      do 
+      do
       (when (= (mod (karo-index karo) 500) 0)
 	(print karo)
 	(force-output))
@@ -1647,7 +1682,7 @@ otherwise return NIL."
 		tas-maximum-karo nil))
 	(when (= tas tas-maximum)
 	  (push karo tas-maximum-karo))
-	(when (< tas tas-minimum) 
+	(when (< tas tas-minimum)
 	  (setf tas-minimum tas
 		tas-minimum-karo nil))
 	(when (= tas tas-minimum)
@@ -1655,7 +1690,7 @@ otherwise return NIL."
 	(format s "~&~D: ~A TAS ~A best connection ~S saltos ~S~%"
 		(karo-index karo)
 		karo tas
-		(format nil "~A" best-connection) 
+		(format nil "~A" best-connection)
 		(format nil "~A" salto-values)))
       finally
       (format s "~&~%Minimum TAS ~D~%~A~%Maximum TAS ~D~%~A~%"
@@ -1682,7 +1717,7 @@ otherwise return NIL."
 	    (mapcar #'karo-index best-connected-karos))))
 
 
-(defun complete-list (group-size &optional (stream t) 
+(defun complete-list (group-size &optional (stream t)
 		      force
 		      (notes '(0 1 2 3 4 5 6 7 8 9 10 11)))
   (unless (find group-size *group-sizes*)
@@ -1691,7 +1726,7 @@ otherwise return NIL."
   (loop for i below (max-karo group-size)
      for karo = (permute (subseq notes 0 group-size) (1- i))
      do
-       (format stream "~&~A~6T~{~A~^ ~}~%~6T~{~A~^ ~}~%" 
+       (format stream "~&~A~6T~{~A~^ ~}~%~6T~{~A~^ ~}~%"
 	       i (as-chords karo) (name-chords karo))
        (when force
 	 (force-output stream))))
@@ -1776,8 +1811,8 @@ xy lineto stroke
 /dx x r 40 add add nth 30 mul add def
 /dy y 70 sub def
 % dx dy moveto a =string cvs show
-% dx dy 20 add moveto b =string cvs show 
-% dx dy 40 add moveto c =string cvs show 
+% dx dy 20 add moveto b =string cvs show
+% dx dy 40 add moveto c =string cvs show
 a b segment b c segment c a segment
 } def
 
@@ -1910,7 +1945,7 @@ x y moveto
 		     (tag s 'part '((id . "P1"))
 			  (loop for c in chords
 			     for measure = 1 then (1+ measure)
-			     do 
+			     do
 			       (tag s 'measure (list (cons 'number measure))
 				    (tag s 'attributes nil
 					 (tag1 s 'divisions 1)
@@ -1945,7 +1980,7 @@ x y moveto
 						     (24
 						      ;; C C+ C# C++
 						      ;; D D+ D# D++
-						      ;; E E+ 
+						      ;; E E+
 						      ;; F F+ F# F++
 						      ;; G G+ G# G++
 						      ;; A A+ A# A++
@@ -2009,7 +2044,7 @@ x r 40 add add y moveto
     (setq x (first point))
     (setq y (second point)))
   (format nil "~&<text x=\"~A\" y=\"~A\"~@[ dx=\"~A\"~]~@[ dy=\"~A\"~]~@[ fill=\"~A\"~]~@[ font-size=\"~A\"~]>~A</text>~%"
-	  x y dx dy fill font-size 
+	  x y dx dy fill font-size
 	  text))
 
 
@@ -2097,7 +2132,7 @@ x r 40 add add y moveto
 			     (stop (point (1+ i) (- max-y b))))
 		       (princ (svg-line start stop) stream)
 		       (princ (svg-circle (first start) (second start) 3) stream)
-		       (princ (svg-circle (first stop) (second stop) 3) stream)		       
+		       (princ (svg-circle (first stop) (second stop) 3) stream)
 		       (princ (svg-text (format nil "~A" a) :point (point .5 (- max-y a))) stream)
 		       (princ (svg-text (format nil "~A" b) :point (point .5 (- max-y b))) stream)))
 		   (first c) (second c))
@@ -2170,7 +2205,7 @@ showpage
       (svg-karo-diagram stream nil (as-chords notes))
       (trailer stream :svg))
     filename))
-  
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -2179,8 +2214,8 @@ showpage
 (defmethod midi-output ((notes list) &key directory duration instrument octave karo-index)
   (unless (integerp karo-index)
     (setf karo-index 0))
-  (midi::with-midi-output (midi (format nil "~A/karo-~A.mid" 
-					(or directory "/tmp") 
+  (midi::with-midi-output (midi (format nil "~A/karo-~A.mid"
+					(or directory "/tmp")
 					karo-index)
 				:title (format nil "Karo ~D" karo-index)
 				:instrument instrument)
@@ -2195,7 +2230,7 @@ showpage
 
 #+:karo-midi
 (defmethod midi-output ((karo karo) &key directory duration instrument octave (arpeggio nil))
-  (midi-output (if arpeggio 
+  (midi-output (if arpeggio
 		   (notes karo)
 		   (as-chords karo))
 	       :directory directory
@@ -2227,7 +2262,7 @@ showpage
      with start = 1
      with end = split
      while (<= end (max-karo))
-     do 
+     do
        (push (split-directory-name start split) dirs)
        (if (= end (max-karo))
 	   (setf end most-positive-fixnum)
@@ -2242,7 +2277,7 @@ showpage
 
 
 (defmethod draw ((karo karo)
-		 &key (directory "/tmp") 
+		 &key (directory "/tmp")
 		 (eps t) (svg t) (xml t) (midi t) (split nil) (silent nil))
   (macrolet ((progress (&body body)
 	       `(if silent
@@ -2263,9 +2298,9 @@ showpage
 
 
 (defun draw-all (&key (directory "/tmp") (eps t) (svg t) (xml nil) (midi nil) (split t) (silent t))
-  (karo-loop (k) 
+  (karo-loop (k)
     do (draw k :directory directory :eps eps :svg svg :xml xml :midi midi :split split :silent silent)))
-    
+
 
 (defun ways (m n)
   "Number of ways a subset of length N can be picked without replacement from a set of length M"
@@ -2349,7 +2384,7 @@ lower = \\relative c' {
   \\clef bass
   \\key c \\major
   \\time 4/4
-  
+
   ~{~{~A~^ ~}~^~%   |~}
 }
 
@@ -2388,10 +2423,10 @@ nameChords = \\lyricmode {
   (let ((f (lilypond-output-chords (list karo)
 				   :directory directory
 				   :filename filename
-				   :karo-index (karo-index karo)))) 
+				   :karo-index (karo-index karo))))
     (format t "~&lilypond -dbackend=eps -dno-gs-load-fonts -dinclude-eps-fonts ~A~%" f)
     f))
-			    
+
 
 (defmethod lilypond-output ((list list) &key directory filename titles)
   (let ((f
@@ -2425,13 +2460,13 @@ instr 1
   if2    = 1
   imax   = p6
   imin   = 2
-  
+
      aenv  oscili   iamp, 1/idur, ifenv                ; envelope
-  
+
      adyn  oscili   ifq2*(imax-imin), 1/idur, ifdyn    ; index
      adyn  =        (ifq2*imin)+adyn                   ; add minimum value
      amod  oscili   adyn, ifq2, if2                    ; modulator
-  
+
      a1    oscili   aenv, ifq1+amod, if1               ; carrier
            out      a1
 endin
@@ -2475,7 +2510,7 @@ f52 0 1024  5  1 1024 .0001                      ; index envelope
 		    &allow-other-keys)
   (default output-file (format nil "~A.wav" (pathname-name filename)))
   (with-open-file (s filename :direction :output :if-exists :supersede)
-    (csound-output s karo 
+    (csound-output s karo
 		   :arpeggio arpeggio
 		   :single-voice single-voice
 		   :output-file output-file))
@@ -2484,7 +2519,7 @@ f52 0 1024  5  1 1024 .0001                      ; index envelope
 
 (defvar *tuning-a* 440)
 ;(defun base-tone () (/ *tuning-a* (expt 2 (/ 9 *notes-in-group*))))
-(defun base-tone () 
+(defun base-tone ()
   ;; middle C
   (/ *tuning-a* (expt 2 (/ 9 12))))
 
@@ -2494,7 +2529,7 @@ f52 0 1024  5  1 1024 .0001                      ; index envelope
 
 (defun csound-notes (karo &key arpeggio single-voice)
   (loop for ch in (if arpeggio karo (as-chords karo))
-     for start = 1 then (+ start (* (if arpeggio 
+     for start = 1 then (+ start (* (if arpeggio
 					(if (eq single-voice t)
 					    1
 					    *n-ad-size*)
@@ -2517,16 +2552,16 @@ f52 0 1024  5  1 1024 .0001                      ; index envelope
 		      for n = 1 ; then (1+ n)
 		      collect (format nil note-format
 				      n
-				      (+ start (* duration 
-						  (if arpeggio 
-						      (- n 1) 
+				      (+ start (* duration
+						  (if arpeggio
+						      (- n 1)
 						      0)))
 				      duration
 				      amp
 				      (note-to-pitch note)))))))
 
 
-(defun csound-files (file-name-trunk 
+(defun csound-files (file-name-trunk
 		     notes ; as chords
 		     &key
 		     (directory "/tmp")
@@ -2538,13 +2573,13 @@ f52 0 1024  5  1 1024 .0001                      ; index envelope
       (when chords
 	(push (csound-file (output-file-name "chords") notes) r))
       (when arpeggio
-	(push (csound-file (output-file-name "arp") 
-			   (apply #'mapcan #'list notes) 
+	(push (csound-file (output-file-name "arp")
+			   (apply #'mapcan #'list notes)
 			   :arpeggio t :single-voice t)
 	      r))
       (values r))))
-    
-		     
+
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;; ALL DONE!
