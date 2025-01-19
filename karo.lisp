@@ -50,9 +50,9 @@
 
 (in-package "KARO")
 
-(defparameter *karo-version* "1.114")
+(defparameter *karo-version* "1.115")
 (defparameter *karo-version-date* '("2025-01-19"
-				    "08:00:00"))
+				    "11:30:00"))
 (defconstant +karo-url+ "https://rockola.github.io/karo/")
 
 (defconstant +z6+ 6)
@@ -63,19 +63,22 @@
 (defconstant +triads+ 3)
 (defconstant +tetrads+ 4)
 
-(defvar *notes-in-group* +z12+)
-(defvar *n-ad-size* +triads+)
-
 (defparameter *group-sizes* (list +z6+ +z9+ +z12+ +z19+ +z24+))
 (defparameter *default-group-size* +z12+)
+(defparameter *chord-sizes* (list +triads+ +tetrads+))
+(defparameter *default-chord-size* +triads+)
+
+(defvar *notes-in-group* *default-group-size*)
+(defvar *chord-size* *default-chord-size*)
 
 (defun z12-p () (= *notes-in-group* +z12+))
 (defun z24-p () (= *notes-in-group* +z24+))
 
-(defun working-on-triads () (eql *n-ad-size* +triads+))
-(defun working-on-tetrads () (eql *n-ad-size* +tetrads+))
+(defun working-on-triads () (eql *chord-size* +triads+))
+(defun working-on-tetrads () (eql *chord-size* +tetrads+))
 
-(defun all-notes () (loop for n below *notes-in-group* collect n))
+(defun all-notes (&optional (group-size *notes-in-group*))
+  (loop for n below group-size collect n))
 
 (defun factorial (x)
   (unless (and (integerp x) (>= x 0))
@@ -85,31 +88,27 @@
 
 (defun number-of-karos (&optional z n)
   (let ((z (or z *notes-in-group*))
-	(n (or n *n-ad-size*)))
+	(n (or n *chord-size*)))
     (/ (factorial z) (* (factorial (/ z n)) (expt (factorial n) (/ z n))))))
 
-
-(defconstant +max-z6-karo+ (number-of-karos +z6+)
-  "Number of possible 6-note karos")
-(defconstant +max-z9-karo+ (number-of-karos +z9+)
-  "Number of possible 9-note karos")
-(defconstant +max-z12-karo+ (number-of-karos +z12+)
-  ;; 12! / (4! * (3!)^4) = 15400
-  "Number of possible 12-note karos with chords of size 3")
-
-(defconstant +max-karos+ (list (cons +z6+ +max-z6-karo+)
-			       (cons +z9+ +max-z9-karo+)
-			       (cons +z12+ +max-z12-karo+)))
 
 (defmacro default (var value)
   `(unless ,var (setf ,var ,value)))
 
-(defun max-karo (&optional group-size)
+
+(defvar *max-karos* (make-hash-table :test #'equal))
+
+(defun max-karo (&optional group-size chord-size)
   (default group-size *notes-in-group*)
-  (let ((number-of-karos (assoc group-size +max-karos+)))
-    (if number-of-karos
-	(cdr number-of-karos)
-	(error (format nil "GROUP-SIZE must be one of ~A" (mapcar #'car +max-karos+))))))
+  (default chord-size *chord-size*)
+  (unless (find group-size *group-sizes*)
+    (error (format nil "GROUP-SIZE must be one of ~A, was ~A" *group-sizes* group-size)))
+  (unless (find chord-size *chord-sizes*)
+    (error (format nil "CHORD-SIZE must be one of ~A, was ~A" *chord-sizes* chord-size)))
+  (let ((key (cons group-size chord-size)))
+    (or (gethash key *max-karos*)
+        (setf (gethash key *max-karos*) (number-of-karos group-size chord-size)))))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -216,7 +215,7 @@ configures KE to work on Z12 divided in 3-note chords (triads, the default)"
 		   (>= z n) (= (mod z n) 0)))
     (error "Can't work on Z~A divided into n-ads of ~A" z n))
   (setf *notes-in-group* z
-	*n-ad-size* n)
+	*chord-size* n)
   (princ (format nil "Z~D, chords of ~D~%" z n))
   t)
 
@@ -271,28 +270,28 @@ Examples:
 	  collect c))
 
 
-(defun get-groupings (notes &optional (n-ad-size *n-ad-size*))
-  (if (= n-ad-size (length notes))
+(defun get-groupings (notes &optional (chord-size *chord-size*))
+  (if (= chord-size (length notes))
       (list notes)
-      (loop for n-ad in (combination n-ad-size notes)
-            for rest-of-notes = (difference notes n-ad)
-            collect (mapcar #'(lambda (x) (concatenate 'list n-ad x))
-                            (get-groupings rest-of-notes n-ad-size)))))
+      (loop for chord in (combination chord-size notes)
+            for rest-of-notes = (difference notes chord)
+            collect (mapcar #'(lambda (x) (concatenate 'list chord x))
+                            (get-groupings rest-of-notes chord-size)))))
 
 
-(defun groupings (&optional (notes (all-notes)) (n-ad-size *n-ad-size*))
-  "Returns all lexicographic groupings of N-AD-SIZE for NOTES.
+(defun groupings (&optional (notes (all-notes)) (chord-size *chord-size*))
+  "Returns all lexicographic groupings of CHORD-SIZE for NOTES.
 
-Example: (with *N-AD-SIZE* 3)
+Example: (with *CHORD-SIZE* 3)
 \(groupings '(1 2 3 4 5 6)) =>
 \((1 2 3 4 5 6) (1 2 4 3 5 6) (1 2 5 3 4 6) (1 2 6 3 4 5) (1 3 4 2 5 6)
  (1 3 5 2 4 6) (1 3 6 2 4 5) (1 4 5 2 3 6) (1 4 6 2 3 5) (1 5 6 2 3 4))"
-  (unless (= (rem (length notes) n-ad-size) 0)
-    (error "Length of note list ~A must be multiple of ~A" notes n-ad-size))
-  (cond ((= (length notes) n-ad-size)
+  (unless (= (rem (length notes) chord-size) 0)
+    (error "Length of note list ~A must be multiple of ~A" notes chord-size))
+  (cond ((= (length notes) chord-size)
          (list notes))
          ;;
-        ((= n-ad-size 3)
+        ((= chord-size 3)
          (loop for j on (rest notes)
 	       nconc (loop for k on (rest j)
 		           for first-group = (list (first notes)
@@ -301,8 +300,8 @@ Example: (with *N-AD-SIZE* 3)
 		           nconc (mapcar #'(lambda (x)
 				             (append first-group x))
 				         (groupings (difference notes first-group)
-					            n-ad-size)))))
-        ((= n-ad-size 4)
+					            chord-size)))))
+        ((= chord-size 4)
          (loop for j on (rest notes)
 	       nconc (loop for k on (rest j)
                            nconc (loop for m on (rest k)
@@ -313,9 +312,9 @@ Example: (with *N-AD-SIZE* 3)
 		                       nconc (mapcar #'(lambda (x)
 				                         (append first-group x))
 				                     (groupings (difference notes first-group)
-					                        n-ad-size))))))
+					                        chord-size))))))
         (t
-         (error (format nil "n-ad-size is ~A" n-ad-size)))))
+         (error (format nil "chord size is ~A" chord-size)))))
 
 
 
@@ -326,21 +325,20 @@ Example: (with *N-AD-SIZE* 3)
 	  *group-sizes*))
 |#
 
-(let (all-groupings)
-  (defun groups (group-size)
-    (unless (assoc group-size all-groupings)
-      (push (cons group-size
-		  (groupings (loop for i below group-size collect i)))
-	    all-groupings))
-    (assoc group-size all-groupings)))
+(defvar *all-groupings* (make-hash-table :test #'equal))
+
+(defun groups (&optional (group-size *notes-in-group*) (chord-size *chord-size*))
+  (let ((key (cons group-size chord-size)))
+    (or (gethash key *all-groupings*)
+        (setf (gethash key *all-groupings*)
+              (groupings (all-notes group-size) chord-size)))))
 
 
-
-(defun nth-group (index &optional (group-size *default-group-size*))
+(defun nth-group (index &optional (group-size *notes-in-group*))
   "Returns the INDEXth lexicographic grouping of size GROUP-SIZE"
   (unless (find group-size *group-sizes*)
     (error "Group size must be in ~A, not ~A" *group-sizes* group-size))
-  (nth index (cdr (groups group-size))))
+  (nth index (groups group-size)))
 
 
 (defun nth-tile (list nth)
@@ -491,15 +489,15 @@ If already grouped, do nothing."
   (cond ((typep notes 'karo)
          (as-chords (notes notes)))
         ((every #'(lambda (x) (and (typep x 'list)
-                                   (= (length x) *n-ad-size*)))
+                                   (= (length x) *chord-size*)))
                 notes)
          notes)
         (t
-         (unless (= (rem (length notes) *n-ad-size*) 0)
+         (unless (= (rem (length notes) *chord-size*) 0)
            (error "Length of note list ~A must be multiple of ~D"
-		  notes *n-ad-size*))
+		  notes *chord-size*))
          (loop while notes
-	    collect (loop repeat *n-ad-size* collect (pop notes))))))
+	    collect (loop repeat *chord-size* collect (pop notes))))))
 
 (alias as-triads as-chords)
 (alias chords as-chords)
@@ -750,26 +748,27 @@ If REFERENCE is not NIL, return name of CHORD as referenced."
   (mapcar #'chord-name (as-chords karo)))
 
 
-;; assoc list of "<notes-in-group> <n-ad-size>" and all matching karos, initialized on demand
-(defvar *all-karos* nil)
+;; hash table of "<notes-in-group> <n-ad-size>" and all matching karos, initialized on demand
+(defvar *all-karos* (make-hash-table :test #'equal))
+
+
+(defun all-karos-in-z (notes)
+  (loop for i below (max-karo)
+	with karo-array = (make-array (max-karo))
+	do (setf (aref karo-array i)
+		 (make-instance 'karo
+				:karo-index (1+ i) ;; OFF-BY-ONE!
+				:notes notes))
+	finally (return karo-array)))
 
 
 (defun all-karos (&optional notes)
-  (default notes (all-notes))
+  (default notes (subseq (all-notes) 0 *notes-in-group*))
   "Generate array of all karos"
-  (let ((current-key (format nil "~A ~A" *notes-in-group* *n-ad-size*)))
-    (or (cdr (assoc current-key *all-karos*))
-	(let* ((notes (subseq notes 0 *notes-in-group*))
-	       (all-karos-in-z
-		 (loop for i below (max-karo)
-		       with karo-array = (make-array (max-karo))
-		       do (setf (aref karo-array i)
-				(make-instance 'karo
-					       :karo-index (1+ i) ;; OFF-BY-ONE!
-					       :notes notes))
-		       finally (return karo-array))))
-	  (setf *all-karos* (cons (cons current-key all-karos-in-z) *all-karos*))
-	  all-karos-in-z))))
+  (let ((current-key (cons *notes-in-group* *chord-size*)))
+    (or (gethash current-key *all-karos*)
+	(setf (gethash current-key *all-karos*)
+              (all-karos-in-z notes)))))
 
 
 (defun find-karo (notes)
@@ -1031,7 +1030,7 @@ return its opposite."
 
 (defmethod symmetric ((karo karo) &optional axis)
   (declare (ignore axis))
-  (symmetric (as-triads karo)))
+  (symmetric (as-chords karo)))
 
 
 (defmethod symmetries ((chords list))
@@ -1330,51 +1329,72 @@ Comparisons are made one element at a time from left."
      finally (return t)))
 
 
-(defun karo-connections (&key structures (reject-translation t))
+(defvar *connections* (make-hash-table :test #'equal))
+
+(defun karo-connections (&key structures)
   (default structures (karo-structures))
-  (let ((keys (sort (hash-keys structures) #'karo-structure<))
-	(the-connections (make-hash-table :test #'equal))
-	(message-interval 100))
-    (loop for k in keys
-	  for i = 1 then (1+ i)
-	  do (let* ((v (gethash k structures))
-		    (connections (mapcar #'(lambda (x)
-					     (connect x :reject-translation reject-translation))
-					 v))
-		    (tas-vector (mapcar #'first connections))
-		    (tas (extremum connections #'< :key #'first :key-value-only t))
-		    (karo-indexes (sort (mapcar #'karo-index v) #'<))
-		    (equal-tas (apply #'= tas-vector)))
-	       (if (= (mod i message-interval) 0)
-		   (format t "~A... " i))
-	       (setf (gethash k the-connections)
-		     (list v connections tas-vector tas karo-indexes equal-tas)))
-	  finally
-	     (format t "~%"))
-    (values the-connections)))
+  (let ((connections-key (cons *notes-in-group* *chord-size*)))
+    (unless (gethash connections-key *connections*)
+      (let ((keys (sort (hash-keys structures) #'karo-structure<))
+	    (the-connections (make-hash-table :test #'equal))
+	    (message-interval 100))
+        (loop for k in keys
+	      for i = 1 then (1+ i)
+	      do (let* ((v (gethash k structures))
+		        (connections-accept-translation
+                          (mapcar #'(lambda (x)
+				      (connect x :reject-translation nil))
+			          v))
+		        (connections-reject-translation
+                          (mapcar #'(lambda (x)
+				      (connect x :reject-translation t))
+			          v))
+		        (accept-tas-vector (mapcar #'first connections-accept-translation))
+		        (reject-tas-vector (mapcar #'first connections-reject-translation))
+		        (accept-tas (extremum connections-accept-translation
+                                              #'< :key #'first :key-value-only t))
+		        (reject-tas (extremum connections-reject-translation
+                                              #'< :key #'first :key-value-only t))
+		        (karo-indexes (sort (mapcar #'karo-index v) #'<)))
+	           (if (= (mod i message-interval) 0)
+		       (format t "~A... " i))
+	           (setf (gethash k the-connections)
+		         (list v
+                               connections-accept-translation
+                               connections-reject-translation
+                               (cons accept-tas-vector accept-tas)
+                               (cons reject-tas-vector reject-tas)
+                               karo-indexes)))
+	      finally
+	         (format t "~%"))
+        (setf (gethash connections-key *connections*) the-connections)))
+    (gethash connections-key *connections*)))
 
 
-(defun structures-file (&key filename structures connections (full nil))
-  (default filename (if (working-on-triads) "triad-structures.csv" "tetrad-structures.csv"))
+(defun structures-file (&key filename structures connections)
+  (default filename (if (working-on-triads) "triad-structures" "tetrad-structures"))
   (default structures (karo-structures))
   (default connections (karo-connections :structures structures))
   (let* ((suffix ".csv")
          (csv-file (if (ends-with filename suffix)
                        filename
-                       (concatenate 'string filename suffix))))
+                      (concatenate 'string filename suffix))))
     (with-open-file (s csv-file
 		       :direction :output
 		       :if-exists :supersede)
-      (labels ((csv-cell-formatter (string)
-                 (let ((chars (list #\" #\,)))
+      (labels ((csv-cell-formatter (object)
+                 (let ((string (format nil "~A" object))
+                        (chars (list #\" #\,)))
                    (loop for c in chars
                          when (find c string)
-                           do (return-from csv-cell-formatter (format nil "\"~A\"" string)))
-                   (double-quoted string)))
+                           do (return-from csv-cell-formatter (double-quoted string)))
+                   string))
                (double-quoted (string)
                  (format nil "\"~A\"" string))
                (comma-join (list)
-                 (double-quoted (format nil "~{~D~^, ~}" list))))
+                 (double-quoted (format nil "~{~D~^, ~}" list)))
+               (fix-for-display (best-connection)
+                 (as-chords (normalize (mapcan #'identity (second (first best-connection)))))))
         (dolist (row (list (list (format nil "Karo Engine v~A" *karo-version*)
 			         (first *karo-version-date*)
 			         (second *karo-version-date*)
@@ -1383,51 +1403,71 @@ Comparisons are made one element at a time from left."
 			         (now))
 		           '("Structure"
 			     "n of Karos"
-			     "TAS"
-			     "Karo indexes")))
+			     "TAS (reject translation)"
+			     "TAS (accept translation)"
+                             "TAS difference"
+			     "Karo indexes"
+                             "Best (reject)"
+                             "Best (accept)")))
           (format s "~&~{~A~^,~}~%" (mapcar #'csv-cell-formatter row)))
         (loop for k being each hash-key of connections
-              with short-format = "~&~A,~D,~D,~A"
-	      do (destructuring-bind (v best-connections tas-vector tas karo-indexes equal-tas)
+              with row-format = "~&~A,~D,~D,~D,~A,~A,~A,~A~%"
+	      do (destructuring-bind (equivalent-karos
+                                      best-connections-accept-translation
+                                      best-connections-reject-translation
+                                      (accept-translation-tas-vector . accept-translation-tas)
+                                      (reject-translation-tas-vector . reject-translation-tas)
+                                      karo-indexes)
 		     (gethash k connections)
-	           (format s short-format
-		           (csv-cell-formatter (structure-formatted k))
-		           (length v)
-		           tas
-		           (comma-join karo-indexes))
-                   (if full
-                       (format s ",~D,~A,~A~%"
-			       equal-tas
-			       (csv-cell-formatter tas-vector)
-			       (csv-cell-formatter (second (first best-connections))))
-                       (terpri s))))))
+                   (declare (ignore accept-translation-tas-vector reject-translation-tas-vector))
+                   (let ((best-reject (fix-for-display best-connections-reject-translation))
+                         (best-accept (fix-for-display best-connections-accept-translation)))
+	             (format s row-format
+		             (csv-cell-formatter (structure-formatted k))
+		             (length equivalent-karos)
+		             reject-translation-tas
+                             accept-translation-tas
+                             (if (= accept-translation-tas reject-translation-tas)
+                                 ""
+                                 (- accept-translation-tas reject-translation-tas))
+		             (comma-join karo-indexes)
+			     (csv-cell-formatter best-reject)
+                             (if (= accept-translation-tas reject-translation-tas)
+                                 ""
+                                 (csv-cell-formatter best-accept))))))))
     csv-file))
 
 
-(defun stats (&key (filename "/tmp/stats.txt") structures connections)
+(defun stats (&key (filename "/tmp/stats.csv") structures connections)
   (default structures (karo-structures))
   (default connections (karo-connections :structures structures))
   (with-open-file (s filename :direction :output :if-exists :supersede)
     (loop for key in (hash-keys connections)
-       with stats = (make-hash-table)
-       do
-	 (destructuring-bind (v best-connections tas-vector tas karo-indexes equal-tas)
-	     (gethash key connections)
-	   (declare (ignore v best-connections tas-vector karo-indexes equal-tas))
-	   (push key (gethash tas stats)))
-       finally
-	 (let ((stat-keys (sort (hash-keys stats) #'<)))
-	   (loop for k in stat-keys
-	      do
-		(format s "~&~D ~D~%" k (length (gethash k stats))))))))
+          with reject-stats = (make-hash-table :test #'equal)
+          with accept-stats = (make-hash-table :test #'equal)
+          do
+	     (destructuring-bind (v best-accept best-reject
+                                  (accept-v . accept-tas) (reject-v . reject-tas) karo-indexes)
+	         (gethash key connections)
+	       (declare (ignore v best-accept best-reject accept-v reject-v karo-indexes))
+	       (push key (gethash reject-tas reject-stats))
+               (push key (gethash accept-tas accept-stats)))
+          finally
+             (format s "~&k,Reject,Accept~%")
+	     (let ((stat-keys (sort (hash-keys reject-stats) #'<)))
+	       (loop for k in stat-keys
+	             do
+		        (format s "~&~D,~D,~D~%" k
+                                (length (gethash k reject-stats))
+                                (length (gethash k accept-stats))))))))
 
 
 (defun connect-two (1st-chord 2nd-chord
 		    &key
-		    (all t)
-		    (adjust t)
-		    permute-first
-		    reject-translation)
+		      (all t)
+		      (adjust t)
+		      permute-first
+		      reject-translation)
   (karo-debug "Foo")
   (let ((chord-1 (normalize 1st-chord))
 	(chord-2 (normalize 2nd-chord)))
@@ -1440,30 +1480,30 @@ Comparisons are made one element at a time from left."
 					     (if permute-first
 						 (list-permutations chord-1)
 						 (list chord-1)))
-	       with second-chords = (mapcar #'reference (list-permutations chord-2))
-	       append
-		 (progn
-		   (karo-debug "Foo ~A" first-chord)
-		   (let ((connections
-			  (stable-sort
-			   (connect-two-sort first-chord second-chords
-					     :reject-translation reject-translation
-					     :adjust adjust)
-			   #'< :key #'tas))) ; SORT BY total-absolute-salto
-		     (if all
-			 (let ((tas (tas (first connections))))
-			   (karo-debug "Connections ~A" connections)
-			   (mapcar #'(lambda (x)
-				       (cond ((< (tas x) tas)
-					      ;; something weird has happened as TAS of first in the
-					      ;; list should also be smallest
-					      (error "TAS of ~A is ~A but should not be smaller than ~A"
-						     x (tas x) tas))
-					     ((= (tas x) tas)
-					      x)
-					     (t nil)))
-				   connections))
-			 (first connections))))))))
+	          with second-chords = (mapcar #'reference (list-permutations chord-2))
+	          append
+		  (progn
+		    (karo-debug "Foo ~A" first-chord)
+		    (let ((connections
+			    (stable-sort
+			     (connect-two-sort first-chord second-chords
+					       :reject-translation reject-translation
+					       :adjust adjust)
+
+		             (if all
+			         (let ((tas (tas (first connections))))
+			           (karo-debug "Connections ~A" connections)
+			           (mapcar #'(lambda (x)
+				               (cond ((< (tas x) tas)
+					              ;; something weird has happened as TAS of first in the
+					              ;; list should also be smallest
+					              (error "TAS of ~A is ~A but should not be smaller than ~A"
+						             x (tas x) tas))
+					             ((= (tas x) tas)
+					              x)
+					             (t nil)))
+				           connections))
+			         (first connections)))))))))))
 
 
 (defun best-match (chord-1 chord-2 &rest parameters)
@@ -1794,7 +1834,7 @@ otherwise return NIL."
 /r 140 def
 /notes ~D def
 /nad ~D def
-" *notes-in-group* *n-ad-size*)
+" *notes-in-group* *chord-size*)
   (format stream "
 /xy {
 15 exch sub notes div 360 mul /tmp2 exch def
@@ -1827,6 +1867,17 @@ xy lineto stroke
 a b segment b c segment c a segment
 } def
 
+/tetrad {
+/nth exch def
+/d exch def
+/c exch def
+/b exch def
+/a exch def
+/dx x r 40 add add nth 30 mul add def
+/dy y 70 sub def
+a b segment b c segment c d segment d a segment
+} def
+
 /axis {
 /a exch def
 newpath
@@ -1840,9 +1891,14 @@ notes 2 div a add xy lineto stroke
 /r tmp def
 } def
 
-/karo {
+/karotriad {
 x y moveto
 3 triad 2 triad 1 triad 0 triad
+} def
+
+/karotetrad {
+x y moveto
+2 tetrad 1 tetrad 0 tetrad
 } def
 
 %%EndProlog~%"))
@@ -2042,7 +2098,7 @@ x r 40 add add y moveto
   (when axis
     (dolist (axis-of-symmetry (symmetries (as-chords as-notes)))
       (format stream "~&~D axis~%" axis-of-symmetry)))
-  (format stream "~{~D ~}karo~%" as-notes))
+  (format stream "~{~D ~}karo~A~%" as-notes (if (working-on-triads) "triad" "tetrad")))
 
 
 (defun svg-circle (cx cy r &key (fill "white") (stroke "black") (stroke-width 1))
@@ -2193,9 +2249,11 @@ showpage
 
 
 (defmethod diagram ((karo karo) &optional directory (format :svg) (axis nil))
-  (let ((filename (format nil "~A/karo-~D.~A"
+  (let ((filename (format nil "~A/karo-~D_z~Dc~D.~A"
 			  (if directory directory "/tmp")
 			  (karo-index karo)
+                          *notes-in-group*
+                          *chord-size*
 			  (ecase format
 			    (:eps "eps")
 			    (:svg "svg")))))
@@ -2543,7 +2601,7 @@ f52 0 1024  5  1 1024 .0001                      ; index envelope
      for start = 1 then (+ start (* (if arpeggio
 					(if (eq single-voice t)
 					    1
-					    *n-ad-size*)
+					    *chord-size*)
 					1) duration))
      with duration = 1
      with amp = 5000
