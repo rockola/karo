@@ -1,5 +1,7 @@
-1.107
-================
+# 1.115
+* Bugfix: tetrad compatibility for ALL-KAROS, STRUCTURES-FILE, DIAGRAM
+
+# 1.107
 * Bugfix: NORMALIZE-CHORD-STRUCTURE now considers 
 	1,4(i) 3,4(i+11) 4,1(i+4) 4,3(i+3) and 
 	1,4(i+1) 3,4(i) 4,1(i+5) 4,3(i+4) equivalent
