@@ -50,8 +50,8 @@
 
 (in-package "KARO")
 
-(defparameter *karo-version* "1.113")
-(defparameter *karo-version-date* '("2025-01-09"
+(defparameter *karo-version* "1.114")
+(defparameter *karo-version-date* '("2025-01-19"
 				    "08:00:00"))
 (defconstant +karo-url+ "https://rockola.github.io/karo/")
 
@@ -71,6 +71,9 @@
 
 (defun z12-p () (= *notes-in-group* +z12+))
 (defun z24-p () (= *notes-in-group* +z24+))
+
+(defun working-on-triads () (eql *n-ad-size* +triads+))
+(defun working-on-tetrads () (eql *n-ad-size* +tetrads+))
 
 (defun all-notes () (loop for n below *notes-in-group* collect n))
 
@@ -1352,45 +1355,53 @@ Comparisons are made one element at a time from left."
 
 
 (defun structures-file (&key filename structures connections (full nil))
-  (default filename "/tmp/structures.csv")
+  (default filename (if (working-on-triads) "triad-structures.csv" "tetrad-structures.csv"))
   (default structures (karo-structures))
   (default connections (karo-connections :structures structures))
-  (let ((suffix ".csv"))
-    (unless (ends-with filename suffix)
-      (setq filename (concatenate 'string filename suffix))))
-  (with-open-file (s filename
-		     :direction :output
-		     :if-exists :supersede)
-    (dolist (row (list (list (format nil "Karo Engine v~A" *karo-version*)
-			     (first *karo-version-date*)
-			     (second *karo-version-date*)
-			     ""
-			     "Structure file"
-			     (today)
-			     (now))
-		       '("Structure"
-			 "n of Karos"
-			 "TAS"
-			 "Karo indexes")))
-      (format s "~&~{\"~A\"~^;~}~%" row))
-    (loop for k being each hash-key of connections
-	  do (destructuring-bind (v best-connections tas-vector tas karo-indexes equal-tas)
-		 (gethash k connections)
-	       (if full
-		   (format s "~&\"~A\";~D;~D;~A;~:[\"N\"~;~];\"~A\";\"~A\"~%"
-			   (structure-formatted k)
-			   (length v)
-			   tas
-			   (format nil "\"~{~D~^,~}\"" karo-indexes)
-			   equal-tas
-			   (format nil "~A" tas-vector)
-			   (format nil "~A" (second (first best-connections))))
-		   (format s "~&\"~A\";~D;~D;~A~%"
-			   (structure-formatted k)
-			   (length v)
-			   tas
-			   (format nil "\"~{~D~^,~}\"" karo-indexes))))))
-  filename)
+  (let* ((suffix ".csv")
+         (csv-file (if (ends-with filename suffix)
+                       filename
+                       (concatenate 'string filename suffix))))
+    (with-open-file (s csv-file
+		       :direction :output
+		       :if-exists :supersede)
+      (labels ((csv-cell-formatter (string)
+                 (let ((chars (list #\" #\,)))
+                   (loop for c in chars
+                         when (find c string)
+                           do (return-from csv-cell-formatter (format nil "\"~A\"" string)))
+                   (double-quoted string)))
+               (double-quoted (string)
+                 (format nil "\"~A\"" string))
+               (comma-join (list)
+                 (double-quoted (format nil "~{~D~^, ~}" list))))
+        (dolist (row (list (list (format nil "Karo Engine v~A" *karo-version*)
+			         (first *karo-version-date*)
+			         (second *karo-version-date*)
+			         "Structure file"
+			         (today)
+			         (now))
+		           '("Structure"
+			     "n of Karos"
+			     "TAS"
+			     "Karo indexes")))
+          (format s "~&~{~A~^,~}~%" (mapcar #'csv-cell-formatter row)))
+        (loop for k being each hash-key of connections
+              with short-format = "~&~A,~D,~D,~A"
+	      do (destructuring-bind (v best-connections tas-vector tas karo-indexes equal-tas)
+		     (gethash k connections)
+	           (format s short-format
+		           (csv-cell-formatter (structure-formatted k))
+		           (length v)
+		           tas
+		           (comma-join karo-indexes))
+                   (if full
+                       (format s ",~D,~A,~A~%"
+			       equal-tas
+			       (csv-cell-formatter tas-vector)
+			       (csv-cell-formatter (second (first best-connections))))
+                       (terpri s))))))
+    csv-file))
 
 
 (defun stats (&key (filename "/tmp/stats.txt") structures connections)
